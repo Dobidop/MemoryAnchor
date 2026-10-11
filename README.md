@@ -1,8 +1,8 @@
-# Anchor
+# MemoryAnchor
 
 An Anki client for iPhone, distributed by sideloading (AltStore / SideStore).
 
-Anchor is **not** a reimplementation of Anki. It embeds Anki's own Rust
+MemoryAnchor is **not** a reimplementation of Anki. It embeds Anki's own Rust
 backend — `rslib`, the same code that powers Anki Desktop and AnkiDroid — and
 puts a web UI in front of it in a `WKWebView` shell. Scheduling, card
 rendering, `.apkg` import and AnkiWeb sync are therefore Anki's real
@@ -20,7 +20,7 @@ to `rslib` by POSTing protobuf to `/_anki/<method>` on a loopback HTTP server
 (`ts/lib/generated/post.ts` → `qt/aqt/mediasrv.py`). AnkiDroid uses the same
 `rslib` core behind a JNI bridge.
 
-Anchor reuses that contract verbatim:
+MemoryAnchor reuses that contract verbatim:
 
 ```
 ┌──────────────────────────────────────────┐
@@ -51,15 +51,15 @@ talks to a real Anki backend without us hand-writing a scheduler, a template
 renderer, or a sync client.
 
 A loopback port on iOS is reachable by any app on the device, so every request
-must carry a bearer token minted at startup. See `rust/anchor-core/src/server.rs`.
+must carry a bearer token minted at startup. See `rust/memoryanchor-core/src/server.rs`.
 
 ## Repository layout
 
 | Path | Contents |
 |---|---|
-| `rust/anchor-core/` | The bridge: C ABI for Swift + the loopback protobuf server |
-| `rust/anchor-core/build.rs` | Generates the method routing table from Anki's descriptor pool |
-| `rust/anchor-core/include/` | `anchor.h` + modulemap consumed by Swift |
+| `rust/memoryanchor-core/` | The bridge: C ABI for Swift + the loopback protobuf server |
+| `rust/memoryanchor-core/build.rs` | Generates the method routing table from Anki's descriptor pool |
+| `rust/memoryanchor-core/include/` | `memoryanchor.h` + modulemap consumed by Swift |
 | `vendor/anki/` | Anki upstream, pinned submodule (currently 26.08.1, `4383a707`) |
 | `web/` | React UI (not started) |
 | `ios/` | Capacitor/Xcode shell (not started) |
@@ -101,7 +101,7 @@ upstream bump as a migration, not a routine update.
 
 ```bash
 git clone --recurse-submodules <this repo>
-cd anchor/rust
+cd memoryanchor/rust
 cargo build --release
 ```
 
@@ -121,7 +121,7 @@ Apple hardware; only the `.ipa` does.
 
 An `.ipa` can only be produced on macOS. `.github/workflows/ios-spike.yml`
 cross-compiles the static library on a macOS runner and assembles
-`AnchorCore.xcframework` with device and simulator slices.
+`MemoryAnchorCore.xcframework` with device and simulator slices.
 
 ## Project status
 
@@ -130,25 +130,25 @@ approach: nobody upstream maintains an Apple-mobile build of `rslib`.
 
 **The spike passed.** `rslib` cross-compiles cleanly to both
 `aarch64-apple-ios` and `aarch64-apple-ios-sim` with plain cargo, and the two
-slices assemble into a usable `AnchorCore.xcframework`. No patches to
+slices assemble into a usable `MemoryAnchorCore.xcframework`. No patches to
 upstream Anki were needed. The cold build takes about 4 minutes on a
 `macos-15` runner.
 
 | | Status |
 |---|---|
 | rslib builds standalone with plain cargo (no Ninja orchestration) | ✅ verified on Windows |
-| `anchor-core` builds against rslib | ✅ verified on Windows |
+| `memoryanchor-core` builds against rslib | ✅ verified on Windows |
 | Routing table generates from Anki's descriptor pool | ✅ 236 methods, all unambiguous |
 | Loopback server round-trips a real call into rslib | ✅ `tests/roundtrip.rs` |
 | Bearer token rejects unauthorized callers | ✅ `tests/roundtrip.rs` |
 | rslib cross-compiles to `aarch64-apple-ios` | ✅ CI, both device + sim |
-| `AnchorCore.xcframework` assembles | ✅ CI artifact, 84 MB |
+| `MemoryAnchorCore.xcframework` assembles | ✅ CI artifact, 84 MB |
 | Swift calls the backend on a real simulator | ✅ 5/5 XCTest on iPhone 16 Pro |
 | Web UI drives the backend end to end | ✅ verified in a browser |
 | Unsigned `.ipa` builds for sideloading | ✅ 6.7 MB |
 | `.apkg` import · review UI · AnkiWeb sync | not started |
 
-Phase 1a: `AnchorKit` opens a real collection on an iOS simulator and reads
+Phase 1a: `MemoryAnchorKit` opens a real collection on an iOS simulator and reads
 its decks back over the loopback server. App Transport Security does not
 interfere with loopback HTTP, and unauthenticated callers are rejected.
 
@@ -180,11 +180,14 @@ That open question about install size is now answered above: 6.7 MB.
 
 ## Licensing
 
-`rslib` is **AGPL-3.0-or-later**, so Anchor is too, and its source must be
+`rslib` is **AGPL-3.0-or-later**, so MemoryAnchor is too, and its source must be
 published. AGPL is incompatible with the App Store's terms — this is a
 sideload-only app by construction.
 
-Anki is a trademark of Ankitects Pty Ltd. Anchor is an independent project,
+The app shows as **Anchor** on the iOS home screen, where labels truncate
+around twelve characters; MemoryAnchor is the name everywhere else.
+
+Anki is a trademark of Ankitects Pty Ltd. MemoryAnchor is an independent project,
 not affiliated with or endorsed by Ankitects, and is deliberately named so as
 not to trade on theirs. Where `anki` appears in this repository — the
 `/_anki/` request paths, the `vendor/anki` submodule, the linked build hash —

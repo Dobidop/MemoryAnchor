@@ -1,6 +1,6 @@
 # Generated into an .xcodeproj by XcodeGen at build time, so the pbxproj does
 # not have to be maintained by hand or reviewed in diffs.
-name: Anchor
+name: MemoryAnchor
 options:
   bundleIdPrefix: io.github.dobidop
   deploymentTarget:
@@ -8,11 +8,11 @@ options:
   createIntermediateGroups: true
 
 packages:
-  AnchorKit:
+  MemoryAnchorKit:
     path: ../
 
 targets:
-  Anchor:
+  MemoryAnchor:
     type: application
     platform: iOS
     sources:
@@ -23,13 +23,13 @@ targets:
         type: folder
         optional: true
     dependencies:
-      - package: AnchorKit
-        product: AnchorKit
+      - package: MemoryAnchorKit
+        product: MemoryAnchorKit
     info:
       path: Resources/Info.plist
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.dobidop.anchor
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.dobidop.memoryanchor
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1,2"

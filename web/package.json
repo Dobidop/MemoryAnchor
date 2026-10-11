@@ -1,5 +1,5 @@
 {
-  "name": "anchor-web",
+  "name": "memoryanchor-web",
   "private": true,
   "type": "module",
   "scripts": {

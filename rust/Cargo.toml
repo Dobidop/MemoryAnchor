@@ -1,5 +1,5 @@
 [workspace]
-members = ["anchor-core"]
+members = ["memoryanchor-core"]
 resolver = "2"
 
 [workspace.package]

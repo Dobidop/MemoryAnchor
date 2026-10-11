@@ -1,4 +1,4 @@
-// Talks to the Anchor backend over the same contract Anki Desktop uses
+// Talks to the MemoryAnchor backend over the same contract Anki Desktop uses
 // between its webview and rslib: POST /_anki/<method> with a protobuf body and
 // Content-Type: application/binary.
 //
@@ -11,7 +11,7 @@ import { fromBinary, toBinary, type DescMessage, type MessageShape } from "@bufb
 
 declare global {
   interface Window {
-    __ANCHOR__?: {
+    __MEMORYANCHOR__?: {
       token?: string;
       baseUrl?: string;
       /** Absolute directory the shell reserved for collection files. */
@@ -34,13 +34,13 @@ export class BackendError extends Error {
 /// somewhere other than the app's webview.
 export class NotConfiguredError extends Error {
   constructor() {
-    super("no backend token; this page must be opened by the Anchor shell");
+    super("no backend token; this page must be opened by the MemoryAnchor shell");
     this.name = "NotConfiguredError";
   }
 }
 
 function config(): { token: string; baseUrl: string } {
-  const injected = window.__ANCHOR__;
+  const injected = window.__MEMORYANCHOR__;
   if (!injected?.token) {
     throw new NotConfiguredError();
   }
@@ -48,14 +48,14 @@ function config(): { token: string; baseUrl: string } {
 }
 
 export function isConfigured(): boolean {
-  return Boolean(window.__ANCHOR__?.token);
+  return Boolean(window.__MEMORYANCHOR__?.token);
 }
 
 /// Absolute path the shell reserved for collection files. rslib resolves
 /// relative paths against the process working directory, which is not
 /// meaningful on iOS, so the shell must supply this.
 export function dataDir(): string {
-  const dir = window.__ANCHOR__?.dataDir;
+  const dir = window.__MEMORYANCHOR__?.dataDir;
   if (!dir) {
     throw new NotConfiguredError();
   }
@@ -90,7 +90,7 @@ export async function call<Req extends DescMessage, Resp extends DescMessage>(
 export interface Health {
   ok: boolean;
   anki: string;
-  anchor: string;
+  memoryanchor: string;
 }
 
 /** Liveness plus which rslib build is linked into the app. */

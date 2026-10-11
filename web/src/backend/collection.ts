@@ -1,5 +1,5 @@
 // Typed wrappers for the handful of backend methods the shell needs so far.
-// Method names match the routing table generated in rust/anchor-core; a
+// Method names match the routing table generated in rust/memoryanchor-core; a
 // typo surfaces as a 404 from the server rather than a silent no-op.
 
 import { create } from "@bufbuild/protobuf";

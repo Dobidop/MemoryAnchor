@@ -49,12 +49,12 @@ jobs:
 
       - name: Build static library
         working-directory: rust
-        run: cargo build --release --target ${{ matrix.target }} -p anchor-core
+        run: cargo build --release --target ${{ matrix.target }} -p memoryanchor-core
 
       - uses: actions/upload-artifact@v4
         with:
-          name: libanchor_core-${{ matrix.target }}
-          path: rust/target/${{ matrix.target }}/release/libanchor_core.a
+          name: libmemoryanchor_core-${{ matrix.target }}
+          path: rust/target/${{ matrix.target }}/release/libmemoryanchor_core.a
           if-no-files-found: error
 
   simulator-tests:
@@ -72,11 +72,11 @@ jobs:
         run: |
           mkdir -p ios/Frameworks
           xcodebuild -create-xcframework \
-            -library slices/libanchor_core-aarch64-apple-ios/libanchor_core.a \
-            -headers rust/anchor-core/include \
-            -library slices/libanchor_core-aarch64-apple-ios-sim/libanchor_core.a \
-            -headers rust/anchor-core/include \
-            -output ios/Frameworks/AnchorCore.xcframework
+            -library slices/libmemoryanchor_core-aarch64-apple-ios/libmemoryanchor_core.a \
+            -headers rust/memoryanchor-core/include \
+            -library slices/libmemoryanchor_core-aarch64-apple-ios-sim/libmemoryanchor_core.a \
+            -headers rust/memoryanchor-core/include \
+            -output ios/Frameworks/MemoryAnchorCore.xcframework
 
       - name: Pick a simulator
         id: sim
@@ -92,7 +92,7 @@ jobs:
         working-directory: ios
         run: |
           xcodebuild test \
-            -scheme AnchorKit \
+            -scheme MemoryAnchorKit \
             -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}" \
             -resultBundlePath TestResults.xcresult
 
@@ -107,8 +107,8 @@ jobs:
         if: always()
         run: |
           echo "### Static library size" >> "$GITHUB_STEP_SUMMARY"
-          ls -lh slices/*/libanchor_core.a | awk '{print "- " $NF ": " $5}' >> "$GITHUB_STEP_SUMMARY"
-          du -sh ios/Frameworks/AnchorCore.xcframework >> "$GITHUB_STEP_SUMMARY"
+          ls -lh slices/*/libmemoryanchor_core.a | awk '{print "- " $NF ": " $5}' >> "$GITHUB_STEP_SUMMARY"
+          du -sh ios/Frameworks/MemoryAnchorCore.xcframework >> "$GITHUB_STEP_SUMMARY"
 
   package:
     name: Unsigned .ipa
@@ -145,7 +145,7 @@ jobs:
       - name: Assemble xcframework
         run: |
           mkdir -p ios/Frameworks
-          xcodebuild -create-xcframework             -library slices/libanchor_core-aarch64-apple-ios/libanchor_core.a             -headers rust/anchor-core/include             -library slices/libanchor_core-aarch64-apple-ios-sim/libanchor_core.a             -headers rust/anchor-core/include             -output ios/Frameworks/AnchorCore.xcframework
+          xcodebuild -create-xcframework             -library slices/libmemoryanchor_core-aarch64-apple-ios/libmemoryanchor_core.a             -headers rust/memoryanchor-core/include             -library slices/libmemoryanchor_core-aarch64-apple-ios-sim/libmemoryanchor_core.a             -headers rust/memoryanchor-core/include             -output ios/Frameworks/MemoryAnchorCore.xcframework
 
       - name: Generate Xcode project
         working-directory: ios/App
@@ -153,32 +153,32 @@ jobs:
 
       - name: Archive
         run: |
-          xcodebuild archive             -project ios/App/Anchor.xcodeproj             -scheme Anchor             -configuration Release             -destination 'generic/platform=iOS'             -archivePath build/Anchor.xcarchive             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             CODE_SIGN_IDENTITY=""
+          xcodebuild archive             -project ios/App/MemoryAnchor.xcodeproj             -scheme MemoryAnchor             -configuration Release             -destination 'generic/platform=iOS'             -archivePath build/MemoryAnchor.xcarchive             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             CODE_SIGN_IDENTITY=""
 
       - name: Package unsigned .ipa
         run: |
           # AltStore/SideStore re-sign with the user's own Apple ID at install
           # time, so an unsigned payload is what they expect.
           mkdir -p build/Payload
-          cp -R build/Anchor.xcarchive/Products/Applications/Anchor.app build/Payload/
-          (cd build && zip -qry Anchor.ipa Payload)
+          cp -R build/MemoryAnchor.xcarchive/Products/Applications/MemoryAnchor.app build/Payload/
+          (cd build && zip -qry MemoryAnchor.ipa Payload)
           rm -rf build/Payload
 
       - name: Report real install size
         run: |
-          app=build/Anchor.xcarchive/Products/Applications/Anchor.app
+          app=build/MemoryAnchor.xcarchive/Products/Applications/MemoryAnchor.app
           {
             echo "### Install size"
             echo ""
             echo "| | size |"
             echo "|---|---|"
-            echo "| .ipa (download) | $(ls -lh build/Anchor.ipa | awk '{print $5}') |"
+            echo "| .ipa (download) | $(ls -lh build/MemoryAnchor.ipa | awk '{print $5}') |"
             echo "| .app bundle (installed) | $(du -sh $app | awk '{print $1}') |"
-            echo "| binary | $(ls -lh $app/Anchor | awk '{print $5}') |"
+            echo "| binary | $(ls -lh $app/MemoryAnchor | awk '{print $5}') |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Anchor-unsigned-ipa
-          path: build/Anchor.ipa
+          name: MemoryAnchor-unsigned-ipa
+          path: build/MemoryAnchor.ipa
           if-no-files-found: error

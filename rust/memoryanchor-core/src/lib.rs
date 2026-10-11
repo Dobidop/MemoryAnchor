@@ -1,4 +1,4 @@
-// Anchor core — embeds Anki's Rust backend (rslib) and exposes it to the
+// MemoryAnchor core — embeds Anki's Rust backend (rslib) and exposes it to the
 // iOS shell over loopback HTTP, using the same protobuf contract Anki Desktop
 // uses between its webview and backend.
 //

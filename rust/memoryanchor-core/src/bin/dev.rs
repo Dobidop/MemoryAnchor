@@ -14,7 +14,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-use anchor_core::Instance;
+use memoryanchor_core::Instance;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
@@ -77,7 +77,7 @@ fn main() -> Result<()> {
     let port: u16 = arg("port").map_or(Ok(0), |p| p.parse()).context("parse --port")?;
 
     // Serve a patched copy so the original build output stays untouched.
-    let serve_dir = env::temp_dir().join("anchor-dev-ui");
+    let serve_dir = env::temp_dir().join("memoryanchor-dev-ui");
     let _ = fs::remove_dir_all(&serve_dir);
     copy_dir(&web_root, &serve_dir).context("stage web UI")?;
 
@@ -89,7 +89,7 @@ fn main() -> Result<()> {
     let index_path = serve_dir.join("index.html");
     let index = fs::read_to_string(&index_path)?;
     let injected = format!(
-        "<script>window.__ANCHOR__={{token:{:?},baseUrl:\"\",dataDir:{:?}}};</script>",
+        "<script>window.__MEMORYANCHOR__={{token:{:?},baseUrl:\"\",dataDir:{:?}}};</script>",
         instance.token,
         data_dir.to_string_lossy(),
     );
@@ -99,10 +99,10 @@ fn main() -> Result<()> {
     };
     fs::write(&index_path, patched).context("inject dev config")?;
 
-    println!("Anchor dev server");
+    println!("MemoryAnchor dev server");
     println!("  url:       http://127.0.0.1:{}", instance.port);
     println!("  data dir:  {}", data_dir.display());
-    println!("  anki:      {}", anchor_core::anki_buildhash());
+    println!("  anki:      {}", memoryanchor_core::anki_buildhash());
     println!("\nPress Ctrl+C to stop.");
 
     // Park the main thread; the server runs on the instance's own runtime.

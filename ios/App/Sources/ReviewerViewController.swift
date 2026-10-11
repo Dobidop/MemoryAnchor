@@ -8,10 +8,10 @@
 
 import UIKit
 import WebKit
-import AnchorKit
+import MemoryAnchorKit
 
 final class ReviewerViewController: UIViewController {
-    private var backend: AnchorBackend?
+    private var backend: MemoryAnchorBackend?
     private var webView: WKWebView?
 
     override func viewDidLoad() {
@@ -19,7 +19,7 @@ final class ReviewerViewController: UIViewController {
         view.backgroundColor = .systemBackground
 
         do {
-            let backend = try AnchorBackend(
+            let backend = try MemoryAnchorBackend(
                 preferredLanguages: Self.preferredLanguages(),
                 webRoot: Self.bundledWebRoot()
             )
@@ -49,12 +49,12 @@ final class ReviewerViewController: UIViewController {
             appropriateFor: nil,
             create: true
         )
-        let dir = base.appendingPathComponent("Anchor", isDirectory: true)
+        let dir = base.appendingPathComponent("MemoryAnchor", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
 
-    private func installWebView(for backend: AnchorBackend) {
+    private func installWebView(for backend: MemoryAnchorBackend) {
         let dataDir: URL
         do {
             dataDir = try Self.dataDirectory()
@@ -65,7 +65,7 @@ final class ReviewerViewController: UIViewController {
 
         let config = WKWebViewConfiguration()
         let bootstrap = """
-        window.__ANCHOR__ = {
+        window.__MEMORYANCHOR__ = {
             token: \(jsString(backend.token)),
             baseUrl: \(jsString(backend.baseURL.absoluteString)),
             dataDir: \(jsString(dataDir.path))
@@ -97,7 +97,7 @@ final class ReviewerViewController: UIViewController {
         label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         label.numberOfLines = 0
         label.textAlignment = .center
-        label.text = "Anchor could not start.\n\n\(message)"
+        label.text = "MemoryAnchor could not start.\n\n\(message)"
         view.addSubview(label)
     }
 }

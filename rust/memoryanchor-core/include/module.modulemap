@@ -1,0 +1,4 @@
+module MemoryAnchorCore {
+    header "memoryanchor.h"
+    export *
+}

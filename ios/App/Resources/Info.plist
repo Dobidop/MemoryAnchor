@@ -4,6 +4,8 @@
 <dict>
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
+  <!-- Home screen labels truncate around 12 characters, so the icon shows the
+       short form while the product, bundle id and repo stay MemoryAnchor. -->
   <key>CFBundleDisplayName</key>
   <string>Anchor</string>
   <key>CFBundleExecutable</key>
