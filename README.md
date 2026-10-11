@@ -159,6 +159,8 @@ upstream Anki were needed. The cold build takes about 4 minutes on a
 | Deck list with due counts | ✅ Anki's deck tree |
 | Reviewer with FSRS grading | ✅ Anki's templates and scheduler |
 | AnkiWeb sync | ✅ rslib's own sync client |
+| Card audio and `{{tts}}` | ✅ autoplay, replay, sequential |
+| Undo | ✅ rslib's undo stack |
 
 Phase 1a: `MemoryAnchorKit` opens a real collection on an iOS simulator and reads
 its decks back over the loopback server. App Transport Security does not

@@ -4,10 +4,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mediaToken } from "../backend/client.js";
+import { playAll, stop as stopAudio } from "../backend/audio.js";
 import {
   answerCard,
   nextCard,
   renderCard,
+  undo,
+  undoStatus,
   type CurrentCard,
   type QueueCounts,
   type Rating,
@@ -22,6 +25,10 @@ const RATING_LABELS: { rating: Rating; label: string; key: string }[] = [
 ];
 
 /** Wraps card HTML so it renders exactly as Anki styled it, and no further. */
+function hasAudio(card: RenderedCard, revealed: boolean): boolean {
+  return (revealed ? card.answerAudio : card.questionAudio).length > 0;
+}
+
 function cardDocument(card: RenderedCard, side: "question" | "answer"): string {
   // Templates reference media by bare filename; <base> points those at the
   // media route, with a token in the path since <img> sends no headers. This
@@ -60,6 +67,7 @@ export function Reviewer({ deckName, onFinished }: Props) {
   const [revealed, setRevealed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [undoable, setUndoable] = useState<string>("");
   const shownAt = useRef<number>(Date.now());
 
   const load = useCallback(async () => {
@@ -67,6 +75,7 @@ export function Reviewer({ deckName, onFinished }: Props) {
     setError(null);
     try {
       const next = await nextCard();
+      setUndoable((await undoStatus()).operation);
       if (!next) {
         setCard(null);
         setRendered(null);
@@ -74,9 +83,11 @@ export function Reviewer({ deckName, onFinished }: Props) {
       }
       setCard(next);
       setCounts(next.counts);
-      setRendered(await renderCard(next.cardId));
+      const card = await renderCard(next.cardId);
+      setRendered(card);
       setRevealed(false);
       shownAt.current = Date.now();
+      void playAll(card.questionAudio);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -86,6 +97,33 @@ export function Reviewer({ deckName, onFinished }: Props) {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // Never let a card keep talking after the reviewer is gone.
+  useEffect(() => stopAudio, []);
+
+  const reveal = useCallback(() => {
+    setRevealed(true);
+    if (rendered) {
+      void playAll(rendered.answerAudio);
+    }
+  }, [rendered]);
+
+  const replay = useCallback(() => {
+    if (!rendered) return;
+    void playAll(revealed ? rendered.answerAudio : rendered.questionAudio);
+  }, [rendered, revealed]);
+
+  const undoLast = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await undo();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+    }
   }, [load]);
 
   const grade = useCallback(
@@ -109,8 +147,13 @@ export function Reviewer({ deckName, onFinished }: Props) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === " " || event.key === "Enter") {
         event.preventDefault();
-        if (!revealed) setRevealed(true);
+        if (!revealed) reveal();
         else void grade("good");
+        return;
+      }
+      if (event.key === "r" || event.key === "R") {
+        event.preventDefault();
+        replay();
         return;
       }
       if (!revealed) return;
@@ -122,7 +165,7 @@ export function Reviewer({ deckName, onFinished }: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [revealed, grade]);
+  }, [revealed, grade, reveal, replay]);
 
   const srcDoc = useMemo(
     () => (rendered ? cardDocument(rendered, revealed ? "answer" : "question") : ""),
@@ -155,6 +198,26 @@ export function Reviewer({ deckName, onFinished }: Props) {
           ‹ Decks
         </button>
         <span className="deck-name">{deckName}</span>
+        {rendered && hasAudio(rendered, revealed) && (
+          <button
+            className="link icon"
+            onClick={replay}
+            title="Replay audio (R)"
+            aria-label="Replay audio"
+          >
+            ♪
+          </button>
+        )}
+        {undoable && (
+          <button
+            className="link"
+            onClick={() => void undoLast()}
+            disabled={busy}
+            title={`Undo ${undoable}`}
+          >
+            Undo
+          </button>
+        )}
         {counts && (
           <span className="counts" aria-label="remaining cards">
             <em className="new">{counts.new}</em>
@@ -182,7 +245,7 @@ export function Reviewer({ deckName, onFinished }: Props) {
 
       <footer className="reviewer-actions">
         {!revealed ? (
-          <button className="reveal" onClick={() => setRevealed(true)} disabled={busy}>
+          <button className="reveal" onClick={reveal} disabled={busy}>
             Show answer
           </button>
         ) : (

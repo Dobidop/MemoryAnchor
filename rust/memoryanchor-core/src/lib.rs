@@ -148,6 +148,8 @@ mod tests {
             "importAnkiPackage",
             "syncCollection",
             "syncLogin",
+            "extractAvTags",
+            "undo",
         ] {
             assert!(
                 routes::lookup(name).is_some(),

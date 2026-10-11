@@ -117,6 +117,9 @@ fn the_methods_v1_needs_are_routable() {
         "getQueuedCards",
         "answerCard",
         "renderExistingCard",
+        "extractAvTags",
+        "getUndoStatus",
+        "undo",
     ] {
         assert!(routes::lookup(name).is_some(), "{name} is not routable");
     }

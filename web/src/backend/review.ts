@@ -7,8 +7,11 @@
 
 import { create } from "@bufbuild/protobuf";
 import {
+  ExtractAvTagsRequestSchema,
+  ExtractAvTagsResponseSchema,
   RenderCardResponseSchema,
   RenderExistingCardRequestSchema,
+  type AVTag,
   type RenderCardResponse,
 } from "../gen/anki/card_rendering_pb.js";
 import { OpChangesSchema } from "../gen/anki/collection_pb.js";
@@ -19,6 +22,11 @@ import {
   QueuedCardsSchema,
   type SchedulingStates,
 } from "../gen/anki/scheduler_pb.js";
+import { EmptySchema } from "../gen/anki/generic_pb.js";
+import {
+  OpChangesAfterUndoSchema,
+  UndoStatusSchema,
+} from "../gen/anki/collection_pb.js";
 import { call } from "./client.js";
 
 export type Rating = "again" | "hard" | "good" | "easy";
@@ -64,10 +72,51 @@ export async function nextCard(): Promise<CurrentCard | null> {
   return { cardId: first.card.id, states: first.states, counts };
 }
 
+/** A sound file to play, or text for the device to speak. */
+export type Playable =
+  | { kind: "file"; filename: string }
+  | { kind: "tts"; text: string; lang: string; speed: number };
+
 export interface RenderedCard {
   question: string;
   answer: string;
   css: string;
+  questionAudio: Playable[];
+  answerAudio: Playable[];
+}
+
+function toPlayable(tag: AVTag): Playable | null {
+  if (tag.value.case === "soundOrVideo") {
+    return { kind: "file", filename: tag.value.value };
+  }
+  if (tag.value.case === "tts") {
+    const tts = tag.value.value;
+    return { kind: "tts", text: tts.fieldText, lang: tts.lang, speed: tts.speed || 1 };
+  }
+  return null;
+}
+
+/**
+ * Splits audio out of rendered card text.
+ *
+ * Anki embeds `[sound:...]` and `{{tts}}` inline; leaving them in shows raw
+ * tags on the card. rslib separates them, so the text renders clean and the
+ * audio is ours to play.
+ */
+async function extractAudio(
+  text: string,
+  questionSide: boolean,
+): Promise<{ text: string; audio: Playable[] }> {
+  const response = await call(
+    "extractAvTags",
+    ExtractAvTagsRequestSchema,
+    create(ExtractAvTagsRequestSchema, { text, questionSide }),
+    ExtractAvTagsResponseSchema,
+  );
+  return {
+    text: response.text,
+    audio: response.avTags.map(toPlayable).filter((p): p is Playable => p !== null),
+  };
 }
 
 /**
@@ -93,10 +142,16 @@ export async function renderCard(cardId: bigint): Promise<RenderedCard> {
     create(RenderExistingCardRequestSchema, { cardId, browser: false, partialRender: false }),
     RenderCardResponseSchema,
   );
+  const [question, answer] = await Promise.all([
+    extractAudio(nodesToHtml(rendered.questionNodes), true),
+    extractAudio(nodesToHtml(rendered.answerNodes), false),
+  ]);
   return {
-    question: nodesToHtml(rendered.questionNodes),
-    answer: nodesToHtml(rendered.answerNodes),
+    question: question.text,
+    answer: answer.text,
     css: rendered.css,
+    questionAudio: question.audio,
+    answerAudio: answer.audio,
   };
 }
 
@@ -126,4 +181,28 @@ export async function answerCard(
     }),
     OpChangesSchema,
   );
+}
+
+export interface UndoState {
+  /** Name of the action that would be undone; empty when there is nothing. */
+  operation: string;
+}
+
+export async function undoStatus(): Promise<UndoState> {
+  const status = await call("getUndoStatus", EmptySchema, create(EmptySchema, {}), UndoStatusSchema);
+  return { operation: status.undo };
+}
+
+/**
+ * Reverses the last operation. Worth having in the reviewer: a mistapped
+ * grade otherwise becomes permanent review history and syncs to AnkiWeb.
+ */
+export async function undo(): Promise<string> {
+  const result = await call(
+    "undo",
+    EmptySchema,
+    create(EmptySchema, {}),
+    OpChangesAfterUndoSchema,
+  );
+  return result.operation;
 }

@@ -227,6 +227,13 @@ button.link {
   font-weight: 500;
 }
 
+/* Audio and undo controls sit in the reviewer bar beside the deck name. */
+.reviewer-bar .link { flex: none; font-size: 0.875rem; }
+
+button.link.icon { font-size: 1.1rem; line-height: 1; padding: 0.25rem 0.35rem; }
+
+button.link:disabled { opacity: 0.4; }
+
 .card-frame {
   flex: 1;
   width: 100%;

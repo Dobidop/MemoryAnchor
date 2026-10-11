@@ -105,6 +105,11 @@ final class ReviewerViewController: UIViewController {
         }
 
         let config = WKWebViewConfiguration()
+        // Card audio is played by the page as a card is shown, with no tap of
+        // its own. WKWebView blocks that by default, so audio would simply
+        // never play on device while working fine in a desktop browser.
+        config.mediaTypesRequiringUserActionForPlayback = []
+        config.allowsInlineMediaPlayback = true
         let bootstrap = """
         window.__MEMORYANCHOR__ = {
             token: \(jsString(backend.token)),
