@@ -1,4 +1,4 @@
-// AnkiFruitKit — Swift façade over the ankifruit-core C ABI.
+// AnchorKit — Swift façade over the anchor-core C ABI.
 //
 // The backend runs Anki's rslib in-process and exposes it over a loopback HTTP
 // server speaking Anki's protobuf contract (POST /_anki/<method>). This type
@@ -8,9 +8,9 @@
 // must carry `authorizationHeader`. Never hand the port out without the token.
 
 import Foundation
-import AnkiFruitCore
+import AnchorCore
 
-public enum AnkiFruitError: Error, CustomStringConvertible {
+public enum AnchorError: Error, CustomStringConvertible {
     case startFailed(String)
     case badResponse(status: Int, body: String)
 
@@ -24,7 +24,7 @@ public enum AnkiFruitError: Error, CustomStringConvertible {
     }
 }
 
-public final class AnkiFruitBackend {
+public final class AnchorBackend {
     private let handle: OpaquePointer
 
     /// Loopback port the backend is listening on.
@@ -35,8 +35,8 @@ public final class AnkiFruitBackend {
 
     /// Build hash of the linked rslib, for verifying which Anki version is in.
     public static var ankiBuildHash: String {
-        guard let raw = ankifruit_anki_buildhash() else { return "unknown" }
-        defer { ankifruit_string_free(raw) }
+        guard let raw = anchor_anki_buildhash() else { return "unknown" }
+        defer { anchor_string_free(raw) }
         return String(cString: raw)
     }
 
@@ -56,36 +56,36 @@ public final class AnkiFruitBackend {
         let started: OpaquePointer? = langs.withCString { langsPtr in
             if let webRoot {
                 return webRoot.path.withCString { rootPtr in
-                    ankifruit_start(langsPtr, rootPtr, port, &errPtr)
+                    anchor_start(langsPtr, rootPtr, port, &errPtr)
                 }
             }
-            return ankifruit_start(langsPtr, nil, port, &errPtr)
+            return anchor_start(langsPtr, nil, port, &errPtr)
         }
 
         guard let handle = started else {
             let message: String
             if let errPtr {
                 message = String(cString: errPtr)
-                ankifruit_string_free(errPtr)
+                anchor_string_free(errPtr)
             } else {
                 message = "unknown error"
             }
-            throw AnkiFruitError.startFailed(message)
+            throw AnchorError.startFailed(message)
         }
 
         self.handle = handle
-        self.port = ankifruit_port(handle)
+        self.port = anchor_port(handle)
 
-        if let rawToken = ankifruit_token(handle) {
+        if let rawToken = anchor_token(handle) {
             self.token = String(cString: rawToken)
-            ankifruit_string_free(rawToken)
+            anchor_string_free(rawToken)
         } else {
             self.token = ""
         }
     }
 
     deinit {
-        ankifruit_stop(handle)
+        anchor_stop(handle)
     }
 
     /// Root the webview and HTTP calls should target.
@@ -113,7 +113,7 @@ public final class AnkiFruitBackend {
         let (data, response) = try await URLSession.shared.data(for: request(method: method, body: body))
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw AnkiFruitError.badResponse(
+            throw AnchorError.badResponse(
                 status: status,
                 body: String(data: data, encoding: .utf8) ?? "<\(data.count) bytes>"
             )
@@ -129,7 +129,7 @@ public final class AnkiFruitBackend {
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw AnkiFruitError.badResponse(
+            throw AnchorError.badResponse(
                 status: status,
                 body: String(data: data, encoding: .utf8) ?? ""
             )

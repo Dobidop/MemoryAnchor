@@ -1,4 +1,4 @@
-// AnkiFruit — localhost protobuf endpoint.
+// Anchor — localhost protobuf endpoint.
 //
 // Anki Desktop's webview reaches the backend by POSTing protobuf to
 // `/_anki/<method>` on a loopback HTTP server (see `ts/lib/generated/post.ts`
@@ -69,7 +69,7 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Resp
         return resp;
     }
     let body = format!(
-        r#"{{"ok":true,"anki":"{}","ankifruit":"{}"}}"#,
+        r#"{{"ok":true,"anki":"{}","anchor":"{}"}}"#,
         anki::version::buildhash(),
         env!("CARGO_PKG_VERSION"),
     );

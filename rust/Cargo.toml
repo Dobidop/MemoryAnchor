@@ -1,5 +1,5 @@
 [workspace]
-members = ["ankifruit-core"]
+members = ["anchor-core"]
 resolver = "2"
 
 [workspace.package]

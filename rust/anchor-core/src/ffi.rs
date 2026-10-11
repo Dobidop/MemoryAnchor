@@ -2,9 +2,9 @@
 // learn where it is listening and with which token, tear it down.
 //
 // Ownership rules for the Swift side:
-//   - `ankifruit_start` returns an opaque handle, or NULL with `*err_out` set.
-//   - Every `char*` returned here must be released with `ankifruit_string_free`.
-//   - `ankifruit_stop` consumes the handle; do not touch it afterwards.
+//   - `anchor_start` returns an opaque handle, or NULL with `*err_out` set.
+//   - Every `char*` returned here must be released with `anchor_string_free`.
+//   - `anchor_stop` consumes the handle; do not touch it afterwards.
 
 use std::ffi::c_char;
 use std::ffi::CStr;
@@ -15,7 +15,7 @@ use std::ptr;
 use crate::Instance;
 
 /// Opaque handle. Swift sees this as `OpaquePointer`.
-pub struct AnkiFruitHandle {
+pub struct AnchorHandle {
     instance: Instance,
 }
 
@@ -38,12 +38,12 @@ fn into_c_string(s: impl Into<Vec<u8>>) -> *mut c_char {
 /// `preferred_langs` and `web_root` must each be NULL or a valid NUL-terminated
 /// C string. `err_out` must be NULL or a valid, writable `*mut c_char`.
 #[no_mangle]
-pub unsafe extern "C" fn ankifruit_start(
+pub unsafe extern "C" fn anchor_start(
     preferred_langs: *const c_char,
     web_root: *const c_char,
     port: u16,
     err_out: *mut *mut c_char,
-) -> *mut AnkiFruitHandle {
+) -> *mut AnchorHandle {
     let langs: Vec<String> = if preferred_langs.is_null() {
         vec!["en".to_string()]
     } else {
@@ -78,7 +78,7 @@ pub unsafe extern "C" fn ankifruit_start(
     };
 
     match Instance::start(&langs, port, false, root) {
-        Ok(instance) => Box::into_raw(Box::new(AnkiFruitHandle { instance })),
+        Ok(instance) => Box::into_raw(Box::new(AnchorHandle { instance })),
         Err(err) => {
             if !err_out.is_null() {
                 *err_out = into_c_string(format!("{err:#}"));
@@ -91,9 +91,9 @@ pub unsafe extern "C" fn ankifruit_start(
 /// The loopback port the backend is listening on, or 0 if `handle` is NULL.
 ///
 /// # Safety
-/// `handle` must be NULL or a live handle from `ankifruit_start`.
+/// `handle` must be NULL or a live handle from `anchor_start`.
 #[no_mangle]
-pub unsafe extern "C" fn ankifruit_port(handle: *const AnkiFruitHandle) -> u16 {
+pub unsafe extern "C" fn anchor_port(handle: *const AnchorHandle) -> u16 {
     match handle.as_ref() {
         Some(h) => h.instance.port,
         None => 0,
@@ -101,12 +101,12 @@ pub unsafe extern "C" fn ankifruit_port(handle: *const AnkiFruitHandle) -> u16 {
 }
 
 /// The bearer token required on every request. Caller owns the result and must
-/// release it with `ankifruit_string_free`.
+/// release it with `anchor_string_free`.
 ///
 /// # Safety
-/// `handle` must be NULL or a live handle from `ankifruit_start`.
+/// `handle` must be NULL or a live handle from `anchor_start`.
 #[no_mangle]
-pub unsafe extern "C" fn ankifruit_token(handle: *const AnkiFruitHandle) -> *mut c_char {
+pub unsafe extern "C" fn anchor_token(handle: *const AnchorHandle) -> *mut c_char {
     match handle.as_ref() {
         Some(h) => into_c_string(h.instance.token.clone()),
         None => ptr::null_mut(),
@@ -115,17 +115,17 @@ pub unsafe extern "C" fn ankifruit_token(handle: *const AnkiFruitHandle) -> *mut
 
 /// The linked rslib build hash. Caller owns the result.
 #[no_mangle]
-pub extern "C" fn ankifruit_anki_buildhash() -> *mut c_char {
+pub extern "C" fn anchor_anki_buildhash() -> *mut c_char {
     into_c_string(crate::anki_buildhash())
 }
 
 /// Shuts the backend down and frees the handle.
 ///
 /// # Safety
-/// `handle` must be NULL or a live handle from `ankifruit_start`, and must not
+/// `handle` must be NULL or a live handle from `anchor_start`, and must not
 /// be used again after this call.
 #[no_mangle]
-pub unsafe extern "C" fn ankifruit_stop(handle: *mut AnkiFruitHandle) {
+pub unsafe extern "C" fn anchor_stop(handle: *mut AnchorHandle) {
     if !handle.is_null() {
         drop(Box::from_raw(handle));
     }
@@ -136,7 +136,7 @@ pub unsafe extern "C" fn ankifruit_stop(handle: *mut AnkiFruitHandle) {
 /// # Safety
 /// `s` must be NULL or a pointer previously returned by this library, freed once.
 #[no_mangle]
-pub unsafe extern "C" fn ankifruit_string_free(s: *mut c_char) {
+pub unsafe extern "C" fn anchor_string_free(s: *mut c_char) {
     if !s.is_null() {
         drop(CString::from_raw(s));
     }

@@ -1,13 +1,13 @@
 // Proves the Swift -> C -> Rust -> rslib -> SQLite path works on a real
 // iOS simulator. These are the tests that retire the FFI risk; everything
-// below the C ABI is already covered by rust/ankifruit-core/tests/roundtrip.rs.
+// below the C ABI is already covered by rust/anchor-core/tests/roundtrip.rs.
 //
 // Protobuf messages are hand-encoded here on purpose: the generated Swift
 // message types arrive in phase 1b, and this file only needs a couple of
 // fields to demonstrate a real call reaching the backend.
 
 import XCTest
-@testable import AnkiFruitKit
+@testable import AnchorKit
 
 /// Minimal protobuf wire-format writer — enough for string and bool fields.
 private struct ProtoWriter {
@@ -38,8 +38,8 @@ private struct ProtoWriter {
 }
 
 final class BackendTests: XCTestCase {
-    private func makeBackend() throws -> AnkiFruitBackend {
-        try AnkiFruitBackend(preferredLanguages: ["en"], port: 0)
+    private func makeBackend() throws -> AnchorBackend {
+        try AnchorBackend(preferredLanguages: ["en"], port: 0)
     }
 
     func testBackendStartsAndReportsPortAndToken() throws {
@@ -52,7 +52,7 @@ final class BackendTests: XCTestCase {
     /// tools/write-buildhash.sh, because Anki only populates it via its own
     /// Ninja build and we build rslib with plain cargo.
     func testLinkedAnkiBuildHashIsExposed() throws {
-        let hash = AnkiFruitBackend.ankiBuildHash
+        let hash = AnchorBackend.ankiBuildHash
         XCTAssertFalse(
             hash.isEmpty,
             "rslib build hash is empty - was tools/write-buildhash.sh run before cargo build?"
@@ -63,7 +63,7 @@ final class BackendTests: XCTestCase {
         let backend = try makeBackend()
         let body = try await backend.health()
         XCTAssertTrue(body.contains("\"ok\":true"), "unexpected healthz body: \(body)")
-        XCTAssertTrue(body.contains("\"anki\":\"\(AnkiFruitBackend.ankiBuildHash)\""),
+        XCTAssertTrue(body.contains("\"anki\":\"\(AnchorBackend.ankiBuildHash)\""),
                       "healthz should name the linked rslib: \(body)")
     }
 

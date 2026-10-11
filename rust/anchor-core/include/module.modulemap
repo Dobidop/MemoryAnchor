@@ -1,0 +1,4 @@
+module AnchorCore {
+    header "anchor.h"
+    export *
+}

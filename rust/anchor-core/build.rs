@@ -1,4 +1,4 @@
-// AnkiFruit — generates the HTTP method routing table from Anki's protobuf
+// Anchor — generates the HTTP method routing table from Anki's protobuf
 // descriptor pool.
 //
 // Anki dispatches every backend call through
@@ -165,7 +165,7 @@ fn main() -> Result<()> {
 
     fs::write(out_dir.join("routes.rs"), out)?;
     println!(
-        "cargo:warning=ankifruit: generated {} routes ({} unqualified)",
+        "cargo:warning=anchor: generated {} routes ({} unqualified)",
         routes.len(),
         flat.len()
     );

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Produces an unsigned AnkiFruit.ipa for sideloading.
+# Produces an unsigned Anchor.ipa for sideloading.
 #
 # AltStore, SideStore and Sideloadly all re-sign the app with the user's own
 # Apple ID at install time, so shipping an unsigned payload is both correct and
@@ -10,7 +10,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-$REPO_ROOT/build}"
-ARCHIVE="$BUILD_DIR/AnkiFruit.xcarchive"
+ARCHIVE="$BUILD_DIR/Anchor.xcarchive"
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
@@ -23,7 +23,7 @@ rm -rf "$REPO_ROOT/ios/App/Resources/web"
 mkdir -p "$REPO_ROOT/ios/App/Resources"
 cp -R "$REPO_ROOT/web/dist" "$REPO_ROOT/ios/App/Resources/web"
 
-echo "==> building AnkiFruitCore.xcframework"
+echo "==> building AnchorCore.xcframework"
 "$REPO_ROOT/tools/build-xcframework.sh"
 
 echo "==> generating Xcode project"
@@ -31,8 +31,8 @@ echo "==> generating Xcode project"
 
 echo "==> archiving"
 xcodebuild archive \
-    -project "$REPO_ROOT/ios/App/AnkiFruit.xcodeproj" \
-    -scheme AnkiFruit \
+    -project "$REPO_ROOT/ios/App/Anchor.xcodeproj" \
+    -scheme Anchor \
     -configuration Release \
     -destination 'generic/platform=iOS' \
     -archivePath "$ARCHIVE" \
@@ -43,12 +43,12 @@ xcodebuild archive \
 echo "==> packaging .ipa"
 PAYLOAD="$BUILD_DIR/Payload"
 mkdir -p "$PAYLOAD"
-cp -R "$ARCHIVE/Products/Applications/AnkiFruit.app" "$PAYLOAD/"
-(cd "$BUILD_DIR" && zip -qry AnkiFruit.ipa Payload)
+cp -R "$ARCHIVE/Products/Applications/Anchor.app" "$PAYLOAD/"
+(cd "$BUILD_DIR" && zip -qry Anchor.ipa Payload)
 rm -rf "$PAYLOAD"
 
 echo "==> done"
-ls -lh "$BUILD_DIR/AnkiFruit.ipa" | awk '{print "  ipa:       " $5}'
-du -sh "$ARCHIVE/Products/Applications/AnkiFruit.app" | awk '{print "  app bundle: " $1}'
+ls -lh "$BUILD_DIR/Anchor.ipa" | awk '{print "  ipa:       " $5}'
+du -sh "$ARCHIVE/Products/Applications/Anchor.app" | awk '{print "  app bundle: " $1}'
 # The binary is what actually has to fit; the linker discards unused rslib symbols.
-ls -lh "$ARCHIVE/Products/Applications/AnkiFruit.app/AnkiFruit" | awk '{print "  binary:    " $5}'
+ls -lh "$ARCHIVE/Products/Applications/Anchor.app/Anchor" | awk '{print "  binary:    " $5}'

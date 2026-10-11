@@ -2,8 +2,8 @@
 // rslib -> SQLite, and back. If this passes, the Capacitor webview can drive a
 // real Anki backend using Anki's own generated TypeScript client.
 
-use ankifruit_core::routes;
-use ankifruit_core::Instance;
+use anchor_core::routes;
+use anchor_core::Instance;
 use anki_proto::collection::OpenCollectionRequest;
 use anki_proto::decks::DeckNames;
 use anki_proto::decks::GetDeckNamesRequest;
@@ -151,7 +151,7 @@ fn health_reports_which_anki_is_linked() {
 #[test]
 fn serves_the_web_ui_from_the_same_origin() {
     let dir = tempfile::tempdir().expect("tempdir");
-    std::fs::write(dir.path().join("index.html"), "<!doctype html><title>AnkiFruit</title>")
+    std::fs::write(dir.path().join("index.html"), "<!doctype html><title>Anchor</title>")
         .expect("write index");
     std::fs::write(dir.path().join("app.js"), "export const x = 1;").expect("write asset");
 
@@ -167,7 +167,7 @@ fn serves_the_web_ui_from_the_same_origin() {
 
     let index = http.get(&base).send().expect("GET /");
     assert!(index.status().is_success(), "index status {}", index.status());
-    assert!(index.text().expect("body").contains("AnkiFruit"));
+    assert!(index.text().expect("body").contains("Anchor"));
 
     let asset = http.get(format!("{base}/app.js")).send().expect("GET asset");
     assert!(asset.status().is_success());

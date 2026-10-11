@@ -58,7 +58,7 @@ export function App() {
 
   return (
     <div className="wrap">
-      <h1>AnkiFruit</h1>
+      <h1>Anchor</h1>
       <p className="sub">Anki's own backend, running on iOS.</p>
 
       {status === "error" && error && (
@@ -75,8 +75,8 @@ export function App() {
             <dd>{info.ok ? "running" : "unavailable"}</dd>
             <dt>Anki</dt>
             <dd>{info.anki || "unknown"}</dd>
-            <dt>AnkiFruit</dt>
-            <dd>{info.ankifruit}</dd>
+            <dt>Anchor</dt>
+            <dd>{info.anchor}</dd>
           </dl>
         </div>
       )}
@@ -103,12 +103,12 @@ export function App() {
 
 function describe(err: unknown): string {
   if (err instanceof NotConfiguredError) {
-    return "Open this through the AnkiFruit app — the backend token is injected by the native shell.";
+    return "Open this through the Anchor app — the backend token is injected by the native shell.";
   }
   return err instanceof Error ? err.message : String(err);
 }
 
 // Surface a clear message when the page is opened outside the shell.
 if (typeof window !== "undefined" && !isConfigured()) {
-  console.warn("AnkiFruit: no backend credentials injected");
+  console.warn("Anchor: no backend credentials injected");
 }

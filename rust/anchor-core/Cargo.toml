@@ -1,14 +1,14 @@
 [package]
-name = "ankifruit-core"
+name = "anchor-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "C ABI + localhost protobuf bridge exposing Anki's Rust backend to the AnkiFruit iOS shell"
+description = "C ABI + localhost protobuf bridge exposing Anki's Rust backend to the Anchor iOS shell"
 publish = false
 
 [lib]
-name = "ankifruit_core"
+name = "anchor_core"
 # staticlib: linked into the iOS app. cdylib/rlib: desktop harness + tests.
 crate-type = ["staticlib", "cdylib", "rlib"]
 

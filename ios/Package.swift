@@ -1,26 +1,26 @@
 // swift-tools-version: 5.9
-// AnkiFruitKit — Swift wrapper over the ankifruit-core C ABI.
+// AnchorKit — Swift wrapper over the anchor-core C ABI.
 //
-// AnkiFruitCore.xcframework is a build artifact, not a checked-in file. Build
+// AnchorCore.xcframework is a build artifact, not a checked-in file. Build
 // it first with `tools/build-xcframework.sh`, which drops it into Frameworks/.
 
 import PackageDescription
 
 let package = Package(
-    name: "AnkiFruitKit",
+    name: "AnchorKit",
     platforms: [.iOS(.v15), .macOS(.v12)],
     products: [
-        .library(name: "AnkiFruitKit", targets: ["AnkiFruitKit"]),
+        .library(name: "AnchorKit", targets: ["AnchorKit"]),
     ],
     targets: [
         // Produced by tools/build-xcframework.sh from the Rust static library.
         .binaryTarget(
-            name: "AnkiFruitCore",
-            path: "Frameworks/AnkiFruitCore.xcframework"
+            name: "AnchorCore",
+            path: "Frameworks/AnchorCore.xcframework"
         ),
         .target(
-            name: "AnkiFruitKit",
-            dependencies: ["AnkiFruitCore"],
+            name: "AnchorKit",
+            dependencies: ["AnchorCore"],
             linkerSettings: [
                 // rustls resolves native roots through Security on Apple platforms.
                 .linkedFramework("Security"),
@@ -28,8 +28,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "AnkiFruitKitTests",
-            dependencies: ["AnkiFruitKit"]
+            name: "AnchorKitTests",
+            dependencies: ["AnchorKit"]
         ),
     ]
 )
