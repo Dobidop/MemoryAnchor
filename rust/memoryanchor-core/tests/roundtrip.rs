@@ -339,16 +339,35 @@ fn serves_collection_media_and_refuses_traversal() {
         .expect("set paths");
     assert!(set.status().is_success(), "paths: {}", set.status());
 
+    let media_token: String = {
+        let health: serde_json::Value = http
+            .get(format!("{base}/_anki/healthz"))
+            .header("Authorization", &auth)
+            .send()
+            .expect("healthz")
+            .json()
+            .expect("health json");
+        health["mediaToken"].as_str().expect("mediaToken").to_string()
+    };
+    assert_ne!(media_token, inst.token, "media must use a separate credential");
+
     let hit = http
-        .get(format!("{base}/_anchor/media/{}/diagram.png", inst.token))
+        .get(format!("{base}/_anchor/media/{media_token}/diagram.png"))
         .send()
         .expect("get media");
+    assert_eq!(
+        hit.headers()
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok()),
+        Some("*"),
+        "fonts in a sandboxed iframe need CORS"
+    );
     assert!(hit.status().is_success(), "media: {}", hit.status());
     assert_eq!(hit.bytes().expect("body").as_ref(), b"not-really-a-png");
 
     for escape in ["../secret.txt", "..%2Fsecret.txt", "sub/dir.png"] {
         let resp = http
-            .get(format!("{base}/_anchor/media/{}/{escape}", inst.token))
+            .get(format!("{base}/_anchor/media/{media_token}/{escape}"))
             .send()
             .expect("traversal attempt");
         assert!(
@@ -358,11 +377,18 @@ fn serves_collection_media_and_refuses_traversal() {
         );
     }
 
-    let unauthenticated = http
+    let wrong = http
         .get(format!("{base}/_anchor/media/not-the-token/diagram.png"))
         .send()
         .expect("wrong token");
-    assert_eq!(unauthenticated.status(), reqwest::StatusCode::UNAUTHORIZED);
+    assert_eq!(wrong.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    // The API token must not open the media route, nor the reverse.
+    let crossed = http
+        .get(format!("{base}/_anchor/media/{}/diagram.png", inst.token))
+        .send()
+        .expect("api token on media route");
+    assert_eq!(crossed.status(), reqwest::StatusCode::UNAUTHORIZED);
 }
 
 /// The sync key has to survive a restart, and it cannot live in the webview:

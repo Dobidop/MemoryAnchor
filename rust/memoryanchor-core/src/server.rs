@@ -43,6 +43,11 @@ const PROTO_CONTENT_TYPE: &str = "application/binary";
 pub struct AppState {
     pub backend: anki::backend::Backend,
     pub token: String,
+    /// Separate credential for the media route, which is the only thing card
+    /// content can reach. Card HTML is untrusted author content and the media
+    /// URL is visible to it, so leaking this must not expose the collection
+    /// API behind the main token.
+    pub media_token: String,
     /// Media folder of the open collection, and the directory the app keeps
     /// its own state in. Both are chosen by the caller of `openCollection`,
     /// so they arrive once a collection is opened rather than at startup.
@@ -94,6 +99,7 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Resp
         "ok": true,
         "anki": anki::version::buildhash(),
         "memoryanchor": env!("CARGO_PKG_VERSION"),
+        "mediaToken": state.media_token,
     })
     .to_string();
     (
@@ -374,8 +380,9 @@ async fn media(
     Path((token, name)): Path<(String, String)>,
 ) -> Response {
     // An <img> cannot send an Authorization header, so the token arrives as a
-    // path segment instead. Same check, different carrier.
-    if !constant_time_eq(token.as_bytes(), state.token.as_bytes()) {
+    // path segment instead. Same check, different carrier — and a different,
+    // weaker credential, since card content can read this URL.
+    if !constant_time_eq(token.as_bytes(), state.media_token.as_bytes()) {
         return (StatusCode::UNAUTHORIZED, "invalid or missing token").into_response();
     }
 
@@ -397,12 +404,19 @@ async fn media(
     match tokio::fs::read(root.join(candidate)).await {
         Ok(bytes) => (
             StatusCode::OK,
-            [(
-                header::CONTENT_TYPE,
-                mime_guess::from_path(candidate)
-                    .first_or_octet_stream()
-                    .to_string(),
-            )],
+            [
+                (
+                    header::CONTENT_TYPE,
+                    mime_guess::from_path(candidate)
+                        .first_or_octet_stream()
+                        .to_string(),
+                ),
+                // Cards render in a sandboxed iframe, whose origin is opaque
+                // ("null"). Fonts are CORS-checked even when images are not,
+                // so @font-face in card CSS fails without this. Access is
+                // still gated on the media token in the path.
+                (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".to_string()),
+            ],
             bytes,
         )
             .into_response(),

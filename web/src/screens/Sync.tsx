@@ -10,6 +10,7 @@ import {
   login,
   logout,
   syncCollection,
+  syncMedia,
   type SyncOutcome,
 } from "../backend/sync.js";
 import type { StoredSyncAuth } from "../backend/prefs.js";
@@ -29,7 +30,12 @@ export function Sync({ auth, username, onAuthChanged, onSynced, onClose }: Props
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [pendingFull, setPendingFull] = useState<SyncOutcome | null>(null);
+  // Carries the auth the server redirected us to, so the full sync that
+  // follows goes to the same host the normal sync was told to use.
+  const [pendingFull, setPendingFull] = useState<{
+    outcome: Extract<SyncOutcome, { kind: "needsFullSync" }>;
+    auth: StoredSyncAuth;
+  } | null>(null);
 
   const signIn = useCallback(
     async (event: React.FormEvent) => {
@@ -60,32 +66,43 @@ export function Sync({ auth, username, onAuthChanged, onSynced, onClose }: Props
     setError(null);
     setMessage(null);
     try {
-      const outcome = await syncCollection(auth);
+      const { outcome, auth: current } = await syncCollection(auth);
+      // The server may have moved us to a different host; keep that.
+      if (current !== auth) {
+        onAuthChanged(current, username);
+      }
       if (outcome.kind === "done") {
         setMessage(outcome.message);
         await onSynced();
       } else {
-        setPendingFull(outcome);
+        setPendingFull({ outcome, auth: current });
       }
     } catch (err) {
       setError(describe(err));
     } finally {
       setBusy(false);
     }
-  }, [auth, onSynced]);
+  }, [auth, username, onAuthChanged, onSynced]);
 
   const confirmFull = useCallback(
     async (direction: "upload" | "download") => {
-      if (!auth) return;
+      const target = pendingFull?.auth ?? auth;
+      if (!target) return;
       setBusy(true);
       setError(null);
       setPendingFull(null);
       try {
-        await fullSync(auth, direction);
+        await fullSync(target, direction);
+        if (direction === "download") {
+          // A full download brings the collection but can leave its images
+          // and fonts behind; fetch those before showing any cards.
+          setMessage("Collection downloaded. Fetching media…");
+          await syncMedia(target);
+        }
         setMessage(
           direction === "upload"
             ? "Uploaded this device's collection to AnkiWeb."
-            : "Replaced this device's collection with AnkiWeb's.",
+            : "Replaced this device's collection with AnkiWeb's, including media.",
         );
         await onSynced();
       } catch (err) {
@@ -94,7 +111,7 @@ export function Sync({ auth, username, onAuthChanged, onSynced, onClose }: Props
         setBusy(false);
       }
     },
-    [auth, onSynced],
+    [auth, pendingFull, onSynced],
   );
 
   const signOut = useCallback(async () => {
@@ -122,15 +139,15 @@ export function Sync({ auth, username, onAuthChanged, onSynced, onClose }: Props
       {error && <p className="error">{error}</p>}
       {message && !pendingFull && <p className="notice">{message}</p>}
 
-      {pendingFull && pendingFull.kind === "needsFullSync" && (
+      {pendingFull && (
         <div className="card danger">
           <h2>One collection must replace the other</h2>
-          <p>{pendingFull.message}</p>
+          <p>{pendingFull.outcome.message}</p>
           <p className="warn">
             This cannot be undone. Whichever side you do not keep loses its changes.
           </p>
           <div className="confirm-actions">
-            {pendingFull.direction !== "download" && (
+            {pendingFull.outcome.direction !== "download" && (
               <button
                 className="destructive"
                 disabled={busy}
@@ -139,7 +156,7 @@ export function Sync({ auth, username, onAuthChanged, onSynced, onClose }: Props
                 Keep this device
               </button>
             )}
-            {pendingFull.direction !== "upload" && (
+            {pendingFull.outcome.direction !== "upload" && (
               <button
                 className="destructive"
                 disabled={busy}

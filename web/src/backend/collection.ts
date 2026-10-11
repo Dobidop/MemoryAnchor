@@ -83,9 +83,28 @@ export function defaultPaths(): CollectionPaths {
   };
 }
 
-/// Opens the app's collection and wires up media. Safe to call once at start.
+/// True when a collection is already open on the backend.
+///
+/// Probing beats catching the error: rslib reports an already-open collection
+/// as a generic InvalidInput, which is indistinguishable from real bad input.
+async function collectionIsOpen(): Promise<boolean> {
+  try {
+    await getDeckNames({ skipEmptyDefault: true, includeFiltered: false });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/// Opens the app's collection and wires up paths.
+///
+/// Idempotent on purpose. The backend outlives the page: reloading the webview,
+/// or the shell rebuilding it after iOS suspends the app, would otherwise fail
+/// with CollectionAlreadyOpen.
 export async function openDefaultCollection(): Promise<void> {
   const paths = defaultPaths();
-  await openCollection(paths);
+  if (!(await collectionIsOpen())) {
+    await openCollection(paths);
+  }
   await setPaths(paths);
 }

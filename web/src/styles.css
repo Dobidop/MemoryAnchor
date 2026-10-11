@@ -113,6 +113,40 @@ dd { margin: 0; font-variant-numeric: tabular-nums; }
 
 ul.decks li { display: block; padding: 0; border: 0; }
 
+/* A disclosure control sits outside the deck button so that tapping the row
+   studies the deck and only the chevron expands it. */
+/* Scoped to beat `ul.decks li`, which would otherwise win on specificity
+   and leave the chevron stacked above the row. */
+ul.decks li.deck-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.4rem;
+}
+
+ul.decks li.deck-row .deck { margin-bottom: 0; flex: 1; min-width: 0; }
+
+button.twisty {
+  flex: none;
+  width: 2rem;
+  min-height: 0;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  padding: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+button.twisty:hover { background: var(--surface); border-color: var(--line); }
+
+.chev { display: inline-block; transform: rotate(90deg); transition: transform 0.12s ease; }
+
+.chev.collapsed { transform: rotate(0deg); }
+
+.twisty-spacer { flex: none; width: 2rem; }
+
 button.deck {
   display: flex;
   justify-content: space-between;

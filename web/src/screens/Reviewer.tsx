@@ -3,7 +3,7 @@
 // the app's own styling, and card HTML should not be able to script the shell.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { config } from "../backend/client.js";
+import { mediaToken } from "../backend/client.js";
 import {
   answerCard,
   nextCard,
@@ -23,9 +23,11 @@ const RATING_LABELS: { rating: Rating; label: string; key: string }[] = [
 
 /** Wraps card HTML so it renders exactly as Anki styled it, and no further. */
 function cardDocument(card: RenderedCard, side: "question" | "answer"): string {
-  const { token } = config();
   // Templates reference media by bare filename; <base> points those at the
-  // media route, with the token in the path since <img> sends no headers.
+  // media route, with a token in the path since <img> sends no headers. This
+  // is the media-only credential: card content can read this URL, and must
+  // not gain access to the collection API through it.
+  const token = mediaToken();
   return `<!doctype html>
 <html>
 <head>
@@ -165,8 +167,16 @@ export function Reviewer({ deckName, onFinished }: Props) {
       <iframe
         className="card-frame"
         title="card"
-        // Card HTML is author content: allow it to render, not to script us.
-        sandbox=""
+        // Anki runs card JavaScript and many shared decks depend on it, so
+        // allow scripts — but nothing else. Without allow-same-origin the
+        // frame keeps an opaque origin and cannot reach this page, its
+        // storage, or the API token. The only credential it can see is the
+        // media token in the base href, which unlocks media and nothing else.
+        //
+        // Card scripts can still talk to the outside world, exactly as they
+        // can in Anki itself. Locking that down would need a CSP and would
+        // diverge from upstream behaviour.
+        sandbox="allow-scripts"
         srcDoc={srcDoc}
       />
 

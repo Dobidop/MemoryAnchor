@@ -125,6 +125,22 @@ export interface Health {
   ok: boolean;
   anki: string;
   memoryanchor: string;
+  /** Credential for the media route only; safe to expose to card content. */
+  mediaToken: string;
+}
+
+let cachedMediaToken: string | null = null;
+
+/** Set once at startup so card rendering can build media URLs synchronously. */
+export function setMediaToken(token: string): void {
+  cachedMediaToken = token;
+}
+
+export function mediaToken(): string {
+  if (!cachedMediaToken) {
+    throw new NotConfiguredError();
+  }
+  return cachedMediaToken;
 }
 
 /** Liveness plus which rslib build is linked into the app. */

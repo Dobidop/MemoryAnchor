@@ -2,9 +2,9 @@
 // list and the reviewer.
 
 import { useCallback, useEffect, useState } from "react";
-import { health, NotConfiguredError } from "./backend/client.js";
+import { health, NotConfiguredError, setMediaToken } from "./backend/client.js";
 import { openDefaultCollection } from "./backend/collection.js";
-import { deckTree, setCurrentDeck, type DeckRow } from "./backend/decks.js";
+import { deckTree, leafName, setCurrentDeck, type DeckRow } from "./backend/decks.js";
 import { loadPrefs, type StoredSyncAuth } from "./backend/prefs.js";
 import { DeckList } from "./screens/DeckList.js";
 import { Sync } from "./screens/Sync.js";
@@ -29,7 +29,7 @@ export function App() {
     let cancelled = false;
     (async () => {
       try {
-        await health();
+        setMediaToken((await health()).mediaToken);
         await openDefaultCollection();
         if (cancelled) return;
         const prefs = await loadPrefs();
@@ -125,11 +125,6 @@ export function App() {
       />
     </>
   );
-}
-
-function leafName(name: string): string {
-  const parts = name.split("\u001f");
-  return parts[parts.length - 1] ?? name;
 }
 
 function describe(err: unknown): string {

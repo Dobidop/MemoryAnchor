@@ -4,9 +4,14 @@
 // document picker, and in a desktop browser it opens the file dialog, so the
 // same code path works on device and during development.
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { importPackage, type ImportSummary } from "../backend/import.js";
-import { dueTotal, type DeckRow } from "../backend/decks.js";
+import {
+  dueTotal,
+  initiallyCollapsed,
+  visibleDecks,
+  type DeckRow,
+} from "../backend/decks.js";
 
 interface Props {
   decks: DeckRow[];
@@ -20,6 +25,8 @@ interface Props {
 export function DeckList({ decks, busy, syncedAs, onStudy, onReload, onOpenSync }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  // Seeded from Anki's own collapsed flags so the list matches desktop.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => initiallyCollapsed(decks));
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +52,25 @@ export function DeckList({ decks, busy, syncedAs, onStudy, onReload, onOpenSync 
     [onReload],
   );
 
+  // Re-seed when a different collection arrives, e.g. after a sync.
+  useEffect(() => {
+    setCollapsed(initiallyCollapsed(decks));
+  }, [decks]);
+
+  const toggle = useCallback((id: bigint) => {
+    setCollapsed((previous) => {
+      const next = new Set(previous);
+      const key = String(id);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const rows = useMemo(() => visibleDecks(decks, collapsed), [decks, collapsed]);
   const studiable = decks.filter((deck) => dueTotal(deck) > 0).length;
 
   return (
@@ -71,17 +97,30 @@ export function DeckList({ decks, busy, syncedAs, onStudy, onReload, onOpenSync 
 
       {decks.length > 0 && (
         <ul className="decks">
-          {decks.map((deck) => {
+          {rows.map((deck) => {
             const due = dueTotal(deck);
+            const isCollapsed = collapsed.has(String(deck.id));
             return (
-              <li key={String(deck.id)}>
+              <li key={String(deck.id)} className="deck-row">
+                {deck.hasChildren ? (
+                  <button
+                    className="twisty"
+                    onClick={() => toggle(deck.id)}
+                    aria-expanded={!isCollapsed}
+                    aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${deck.label}`}
+                    style={{ marginLeft: `${deck.level * 0.9}rem` }}
+                  >
+                    <span className={isCollapsed ? "chev collapsed" : "chev"}>›</span>
+                  </button>
+                ) : (
+                  <span className="twisty-spacer" style={{ marginLeft: `${deck.level * 0.9}rem` }} />
+                )}
                 <button
                   className="deck"
-                  style={{ paddingLeft: `${0.75 + deck.level * 1}rem` }}
                   onClick={() => onStudy(deck)}
                   disabled={busy || due === 0}
                 >
-                  <span className="deck-label">{leafName(deck.name)}</span>
+                  <span className="deck-label">{deck.label}</span>
                   <span className="deck-counts">
                     {deck.newCount > 0 && <em className="new">{deck.newCount}</em>}
                     {deck.learnCount > 0 && <em className="learning">{deck.learnCount}</em>}
@@ -112,10 +151,4 @@ export function DeckList({ decks, busy, syncedAs, onStudy, onReload, onOpenSync 
       </div>
     </div>
   );
-}
-
-/// Anki stores subdecks as "Parent::Child"; the tree already conveys depth.
-function leafName(name: string): string {
-  const parts = name.split("\u001f");
-  return parts[parts.length - 1] ?? name;
 }

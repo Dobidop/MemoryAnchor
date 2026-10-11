@@ -56,23 +56,45 @@ function toAuth(stored: StoredSyncAuth) {
   return create(SyncAuthSchema, { hkey: stored.hkey, endpoint: stored.endpoint });
 }
 
+/**
+ * AnkiWeb shards accounts across sync hosts and reports the right one as
+ * `new_endpoint`. Every later call has to go there, so persist it — ignoring
+ * it leaves subsequent requests pointed at a host that answers with something
+ * that is not a sync response at all.
+ */
+async function rememberEndpoint(
+  stored: StoredSyncAuth,
+  newEndpoint: string | undefined,
+): Promise<StoredSyncAuth> {
+  if (!newEndpoint || newEndpoint === stored.endpoint) {
+    return stored;
+  }
+  const updated: StoredSyncAuth = { ...stored, endpoint: newEndpoint };
+  const prefs = await loadPrefs();
+  await savePrefs({ ...prefs, syncAuth: updated });
+  return updated;
+}
+
 export type SyncNeed = "none" | "normal" | "full";
 
 /** Cheap check for whether anything needs syncing. */
-export async function status(stored: StoredSyncAuth): Promise<SyncNeed> {
+export async function status(
+  stored: StoredSyncAuth,
+): Promise<{ need: SyncNeed; auth: StoredSyncAuth }> {
   const response = await call(
     "syncStatus",
     SyncAuthSchema,
     toAuth(stored),
     SyncStatusResponseSchema,
   );
+  const auth = await rememberEndpoint(stored, response.newEndpoint);
   switch (response.required) {
     case SyncStatusResponse_Required.NO_CHANGES:
-      return "none";
+      return { need: "none", auth };
     case SyncStatusResponse_Required.NORMAL_SYNC:
-      return "normal";
+      return { need: "normal", auth };
     default:
-      return "full";
+      return { need: "full", auth };
   }
 }
 
@@ -85,8 +107,15 @@ export type SyncOutcome =
    */
   | { kind: "needsFullSync"; direction: "either" | "upload" | "download"; message: string };
 
-/** Runs a normal sync, reporting back when a full sync is unavoidable. */
-export async function syncCollection(stored: StoredSyncAuth): Promise<SyncOutcome> {
+/**
+ * Runs a normal sync, reporting back when a full sync is unavoidable.
+ *
+ * Returns the auth to use from here on: the server may have redirected us to
+ * a different host, and a following full sync must go there.
+ */
+export async function syncCollection(
+  stored: StoredSyncAuth,
+): Promise<{ outcome: SyncOutcome; auth: StoredSyncAuth }> {
   const response = await call(
     "syncCollection",
     SyncCollectionRequestSchema,
@@ -94,34 +123,45 @@ export async function syncCollection(stored: StoredSyncAuth): Promise<SyncOutcom
     SyncCollectionResponseSchema,
   );
 
+  const auth = await rememberEndpoint(stored, response.newEndpoint);
+  // Needed by a following full sync: without it rslib skips media entirely,
+  // and the collection arrives with every image and font missing.
+  lastServerMediaUsn = response.serverMediaUsn;
+  const wrap = (outcome: SyncOutcome) => ({ outcome, auth });
   const message = response.serverMessage;
   switch (response.required) {
     case SyncCollectionResponse_ChangesRequired.NO_CHANGES:
-      return { kind: "done", message: message || "Already up to date." };
+      return wrap({ kind: "done", message: message || "Already up to date." });
     case SyncCollectionResponse_ChangesRequired.NORMAL_SYNC:
-      return { kind: "done", message: message || "Sync complete." };
+      return wrap({ kind: "done", message: message || "Sync complete." });
     case SyncCollectionResponse_ChangesRequired.FULL_UPLOAD:
-      return {
+      return wrap({
         kind: "needsFullSync",
         direction: "upload",
         message: message || "AnkiWeb has no cards; this device's collection must be uploaded.",
-      };
+      });
     case SyncCollectionResponse_ChangesRequired.FULL_DOWNLOAD:
-      return {
+      return wrap({
         kind: "needsFullSync",
         direction: "download",
         message: message || "This device has no cards; AnkiWeb's collection must be downloaded.",
-      };
+      });
     default:
-      return {
+      return wrap({
         kind: "needsFullSync",
         direction: "either",
         message:
           message ||
           "The collections have diverged too far to merge. One side must replace the other.",
-      };
+      });
   }
 }
+
+/**
+ * The media USN the last syncCollection reported. rslib skips media syncing
+ * during a full sync unless this is supplied.
+ */
+let lastServerMediaUsn: number | undefined;
 
 /**
  * Replaces one collection with the other. Destructive by definition — the
@@ -137,9 +177,19 @@ export async function fullSync(
     create(FullUploadOrDownloadRequestSchema, {
       auth: toAuth(stored),
       upload: direction === "upload",
+      serverUsn: lastServerMediaUsn,
     }),
     EmptySchema,
   );
+}
+
+/**
+ * Fetches media the collection references. Separate from collection sync, and
+ * worth running after a full download, which can bring down a collection whose
+ * images and fonts are not here yet.
+ */
+export async function syncMedia(stored: StoredSyncAuth): Promise<void> {
+  await call("syncMedia", SyncAuthSchema, toAuth(stored), EmptySchema);
 }
 
 export async function abort(): Promise<void> {

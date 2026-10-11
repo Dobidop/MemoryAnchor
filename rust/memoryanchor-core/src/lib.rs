@@ -52,15 +52,10 @@ impl Instance {
             .map_err(anyhow::Error::msg)
             .context("init anki backend")?;
 
-        let token: String = {
-            let mut rng = rand::rng();
-            (0..32)
-                .map(|_| {
-                    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
-                    CHARS[rng.random_range(0..CHARS.len())] as char
-                })
-                .collect()
-        };
+        let token = random_token();
+        // Distinct from the API token: card content can read the media URL,
+        // and must not gain access to the collection API by doing so.
+        let media_token = random_token();
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -71,6 +66,7 @@ impl Instance {
         let state = Arc::new(server::AppState {
             backend,
             token: token.clone(),
+            media_token,
             media_root: std::sync::Mutex::new(None),
             data_dir: std::sync::Mutex::new(None),
         });
@@ -112,6 +108,16 @@ impl Drop for Instance {
         );
         runtime.shutdown_background();
     }
+}
+
+fn random_token() -> String {
+    let mut rng = rand::rng();
+    (0..32)
+        .map(|_| {
+            const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+            CHARS[rng.random_range(0..CHARS.len())] as char
+        })
+        .collect()
 }
 
 /// The rslib build hash, useful for verifying which Anki version is linked in.
