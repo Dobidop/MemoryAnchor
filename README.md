@@ -158,7 +158,7 @@ upstream Anki were needed. The cold build takes about 4 minutes on a
 | `.apkg` import | ✅ upload + rslib import |
 | Deck list with due counts | ✅ Anki's deck tree |
 | Reviewer with FSRS grading | ✅ Anki's templates and scheduler |
-| AnkiWeb sync | not started |
+| AnkiWeb sync | ✅ rslib's own sync client |
 
 Phase 1a: `MemoryAnchorKit` opens a real collection on an iOS simulator and reads
 its decks back over the loopback server. App Transport Security does not
@@ -176,6 +176,17 @@ queue moved a card from new to learning, which is what Anki does.
 Cards render inside a sandboxed iframe. Card CSS is arbitrary author CSS and
 must not leak into the app's styling, and card HTML must not be able to script
 the shell.
+
+Phase 1d: AnkiWeb sync, using rslib's client rather than a reimplementation of
+the protocol. A full sync replaces one collection wholesale, so it is never
+triggered automatically — the app reports that one is required and names what
+each choice discards.
+
+The sync key is kept in a small JSON file beside the collection, not in the
+webview. The backend binds an ephemeral port, so the page's origin changes on
+every launch and browser storage would be lost with it. The key is a
+credential, and the iOS Keychain would be a better home for it; that needs
+native code and is worth doing before many people rely on this.
 
 ### Install size
 

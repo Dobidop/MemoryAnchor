@@ -11,11 +11,13 @@ import { dueTotal, type DeckRow } from "../backend/decks.js";
 interface Props {
   decks: DeckRow[];
   busy: boolean;
+  syncedAs: string | null;
   onStudy: (deck: DeckRow) => void;
   onReload: () => Promise<void>;
+  onOpenSync: () => void;
 }
 
-export function DeckList({ decks, busy, onStudy, onReload }: Props) {
+export function DeckList({ decks, busy, syncedAs, onStudy, onReload, onOpenSync }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
@@ -103,6 +105,9 @@ export function DeckList({ decks, busy, onStudy, onReload }: Props) {
         />
         <button onClick={() => fileInput.current?.click()} disabled={importing}>
           {importing ? "Importing…" : "Import deck"}
+        </button>
+        <button className="secondary" onClick={onOpenSync} disabled={importing}>
+          {syncedAs ? "Sync" : "Connect AnkiWeb"}
         </button>
       </div>
     </div>

@@ -43,10 +43,11 @@ const PROTO_CONTENT_TYPE: &str = "application/binary";
 pub struct AppState {
     pub backend: anki::backend::Backend,
     pub token: String,
-    /// Media folder of the open collection. Set once a collection is opened,
-    /// because the folder is chosen by the caller of `openCollection` and can
-    /// change when a different collection is opened.
+    /// Media folder of the open collection, and the directory the app keeps
+    /// its own state in. Both are chosen by the caller of `openCollection`,
+    /// so they arrive once a collection is opened rather than at startup.
     pub media_root: Mutex<Option<PathBuf>>,
+    pub data_dir: Mutex<Option<PathBuf>>,
 }
 
 /// Builds the router. When `web_root` is set, the built web UI is served from
@@ -64,7 +65,8 @@ pub fn router(state: Arc<AppState>, web_root: Option<PathBuf>) -> Router {
         // Our own namespace, deliberately outside /_anki/: this is not part of
         // Anki's contract.
         .route("/_anchor/upload", post(upload))
-        .route("/_anchor/media-root", post(set_media_root))
+        .route("/_anchor/paths", post(set_paths))
+        .route("/_anchor/prefs", get(get_prefs).put(put_prefs))
         .route("/_anchor/media/{token}/{name}", get(media))
         // Collection packages are routinely hundreds of megabytes; axum
         // defaults to a 2 MB body.
@@ -138,7 +140,7 @@ async fn call_unqualified(
         return resp;
     }
     match routes::lookup(&method) {
-        Some((service, method)) => dispatch(&state, service, method, &body),
+        Some((service, method)) => dispatch(&state, service, method, body.to_vec()).await,
         None => (
             StatusCode::NOT_FOUND,
             format!("unknown method: {method}; try /_anki/<Service>/{method}"),
@@ -157,7 +159,7 @@ async fn call_qualified(
         return resp;
     }
     match routes::lookup_qualified(&service, &method) {
-        Some((service, method)) => dispatch(&state, service, method, &body),
+        Some((service, method)) => dispatch(&state, service, method, body.to_vec()).await,
         None => (
             StatusCode::NOT_FOUND,
             format!("unknown method: {service}/{method}"),
@@ -166,10 +168,35 @@ async fn call_qualified(
     }
 }
 
-/// Runs one backend call. Errors come back as protobuf-encoded `BackendError`,
-/// which we forward with the status the TypeScript client expects.
-fn dispatch(state: &AppState, service: u32, method: u32, input: &[u8]) -> Response {
-    match state.backend.run_service_method(service, method, input) {
+/// Runs one backend call on a thread of its own.
+///
+/// Two reasons it cannot run inline. rslib's sync methods own a tokio runtime
+/// and `block_on` it, which panics if attempted from inside another runtime —
+/// Anki's Python caller is a plain thread, we are an async handler. And the
+/// slow operations here (importing a large package, a full sync) would
+/// otherwise occupy an async worker and stall every other request.
+///
+/// Errors come back as protobuf-encoded `BackendError`, forwarded with the
+/// status the TypeScript client expects.
+async fn dispatch(state: &AppState, service: u32, method: u32, input: Vec<u8>) -> Response {
+    let backend = state.backend.clone();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(backend.run_service_method(service, method, &input));
+    });
+
+    let outcome = match rx.await {
+        Ok(outcome) => outcome,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "backend thread stopped before returning",
+            )
+                .into_response()
+        }
+    };
+
+    match outcome {
         Ok(out) => (
             StatusCode::OK,
             [(header::CONTENT_TYPE, PROTO_CONTENT_TYPE)],
@@ -249,8 +276,8 @@ async fn upload(
     }
 }
 
-/// Points the media route at the open collection's media folder.
-async fn set_media_root(
+/// Tells the backend where the open collection's media and app state live.
+async fn set_paths(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     body: Bytes,
@@ -262,11 +289,78 @@ async fn set_media_root(
         Ok(v) => v,
         Err(err) => return (StatusCode::BAD_REQUEST, format!("bad json: {err}")).into_response(),
     };
-    let Some(path) = parsed.get("path").and_then(|p| p.as_str()) else {
-        return (StatusCode::BAD_REQUEST, "missing 'path'").into_response();
+    let Some(media) = parsed.get("mediaRoot").and_then(|p| p.as_str()) else {
+        return (StatusCode::BAD_REQUEST, "missing 'mediaRoot'").into_response();
     };
-    *state.media_root.lock().unwrap() = Some(PathBuf::from(path));
+    let Some(data) = parsed.get("dataDir").and_then(|p| p.as_str()) else {
+        return (StatusCode::BAD_REQUEST, "missing 'dataDir'").into_response();
+    };
+    *state.media_root.lock().unwrap() = Some(PathBuf::from(media));
+    *state.data_dir.lock().unwrap() = Some(PathBuf::from(data));
     StatusCode::NO_CONTENT.into_response()
+}
+
+/// Small persistent store for app state that is not Anki's business — most
+/// importantly the AnkiWeb sync key.
+///
+/// This cannot live in the webview: the loopback port is ephemeral, so the
+/// page's origin changes on every launch and browser storage is lost with it.
+///
+/// The file sits in the app sandbox beside the collection, so it is protected
+/// the same way the collection is. The sync key is a credential and the
+/// Keychain would be a better home for it on iOS; that needs native code and
+/// is worth doing before this is relied on widely.
+fn prefs_path(state: &AppState) -> Option<PathBuf> {
+    state
+        .data_dir
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|dir| dir.join("prefs.json"))
+}
+
+async fn get_prefs(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
+    if let Err(resp) = authorize(&headers, &state) {
+        return resp;
+    }
+    let Some(path) = prefs_path(&state) else {
+        return (StatusCode::CONFLICT, "paths not configured").into_response();
+    };
+    let body = match tokio::fs::read(&path).await {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        // No file yet simply means nothing has been stored.
+        Err(_) => "{}".to_string(),
+    };
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/json")],
+        body,
+    )
+        .into_response()
+}
+
+async fn put_prefs(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Err(resp) = authorize(&headers, &state) {
+        return resp;
+    }
+    if serde_json::from_slice::<serde_json::Value>(&body).is_err() {
+        return (StatusCode::BAD_REQUEST, "body must be JSON").into_response();
+    }
+    let Some(path) = prefs_path(&state) else {
+        return (StatusCode::CONFLICT, "paths not configured").into_response();
+    };
+    match tokio::fs::write(&path, &body).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("could not save prefs: {err}"),
+        )
+            .into_response(),
+    }
 }
 
 /// Serves one file from the collection's media folder, authenticated by a

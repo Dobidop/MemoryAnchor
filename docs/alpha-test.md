@@ -7,7 +7,10 @@ yet. It is not useful yet. Five minutes of your time is plenty.
 MemoryAnchor is an Anki client for iPhone. It embeds Anki's actual engine
 rather than reimplementing it, so the interesting question is whether that
 engine survives being compiled for iOS and run inside Apple's sandbox. It has
-only ever been tested on a simulator.
+only ever been tested on a simulator and in a desktop browser.
+
+You can import a deck and review cards. Scheduling is Anki's own, so reviews
+behave the way you would expect.
 
 ## Installing
 
@@ -44,17 +47,34 @@ Please note what you see for each of these.
    it hang or crash? iOS suspends apps aggressively and I expect this to be
    the most fragile part.
 
+## If the basics work, try a real deck
+
+5. **Tap "Import deck"** and pick a `.apkg` file. The system file picker opens;
+   Files and iCloud Drive both work. A shared deck from
+   https://ankiweb.net/shared/decks is a good test. Does the import finish, and
+   does the deck appear with a count beside it?
+6. **Tap the deck** to study. Does a card appear? Tap "Show answer", then grade
+   it. The counts at the top right should change.
+7. **If you use AnkiWeb**, tap "Connect AnkiWeb" and sign in. Only do this if
+   you are comfortable; see the warning below.
+
+## Please be careful with sync
+
+Sync is new and barely tested. If your AnkiWeb collection matters to you,
+**do not sign in on this build**, or make sure you have a backup first
+(Anki desktop: File → Export → Anki Collection Package).
+
+If the app says one collection has to replace the other, it will ask which to
+keep. That choice is permanent and discards the other side. If you are unsure,
+cancel and tell me what it said.
+
 ## What does NOT work yet
 
 Please don't report these as bugs — none of it is built:
 
-- Importing `.apkg` decks, or any of your existing Anki material
-- Reviewing cards
-- Syncing with AnkiWeb
-- Creating or editing decks and notes
-
-The "Default" deck is an empty new collection the app made for itself. There
-is no way to put real content in yet.
+- Creating or editing decks, notes or cards
+- Deck options, custom study, statistics, the card browser
+- Audio playback and text-to-speech
 
 ## Reporting back
 

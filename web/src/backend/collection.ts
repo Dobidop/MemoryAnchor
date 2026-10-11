@@ -57,17 +57,18 @@ export async function getDeckNames(options?: {
   return response.entries.map((entry) => ({ id: entry.id, name: entry.name }));
 }
 
-/// Tells the backend where this collection's media lives, so the reviewer can
-/// resolve the bare filenames that card templates reference.
-export async function setMediaRoot(path: string): Promise<void> {
+/// Tells the backend where the collection's media and our own state live.
+/// Media so card templates can resolve bare filenames; the data directory so
+/// the sync key has somewhere to persist that survives a restart.
+export async function setPaths(paths: CollectionPaths): Promise<void> {
   const { token, baseUrl } = config();
-  const response = await fetch(`${baseUrl}/_anchor/media-root`, {
+  const response = await fetch(`${baseUrl}/_anchor/paths`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ mediaRoot: paths.mediaFolderPath, dataDir: dataDir() }),
   });
   if (!response.ok) {
-    throw new Error(`could not set media root: ${response.status}`);
+    throw new Error(`could not configure paths: ${response.status}`);
   }
 }
 
@@ -86,5 +87,5 @@ export function defaultPaths(): CollectionPaths {
 export async function openDefaultCollection(): Promise<void> {
   const paths = defaultPaths();
   await openCollection(paths);
-  await setMediaRoot(paths.mediaFolderPath);
+  await setPaths(paths);
 }

@@ -72,6 +72,7 @@ impl Instance {
             backend,
             token: token.clone(),
             media_root: std::sync::Mutex::new(None),
+            data_dir: std::sync::Mutex::new(None),
         });
 
         let (bound_port, listener) = runtime

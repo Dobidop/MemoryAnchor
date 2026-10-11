@@ -27,7 +27,7 @@ async function upload(file: File, signal?: AbortSignal): Promise<string> {
     signal,
   });
   if (!response.ok) {
-    throw new BackendError(response.status, await response.text().catch(() => ""));
+    throw new BackendError(response.status, (await response.text().catch(() => "")) || "upload failed");
   }
   const { path } = (await response.json()) as { path: string };
   return path;

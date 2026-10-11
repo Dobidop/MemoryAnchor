@@ -216,3 +216,57 @@ button.reveal { width: 100%; }
 .grade-hard { background: #9a6700; }
 .grade-good { background: var(--accent); }
 .grade-easy { background: #15803d; }
+
+/* ---- sync ---- */
+
+.head .link { margin-bottom: 0.5rem; display: inline-block; }
+
+.card h2 + .sub { margin-top: -0.25rem; }
+
+.card label {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+.card input {
+  display: block;
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.65rem;
+  margin-top: 0.25rem;
+  min-height: 2.75rem;
+}
+
+.hint { color: var(--muted); font-size: 0.75rem; font-weight: 400; }
+
+p.hint { margin: 0.75rem 0 0; }
+
+.confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.secondary { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+
+/* A full sync discards one side; make that unmistakable. */
+.card.danger { border-color: #e4b4ae; background: #fdf3f2; }
+
+.card.danger h2 { color: #b3261e; }
+
+.warn { font-weight: 600; color: #b3261e; font-size: 0.875rem; }
+
+.destructive { background: #b3261e; }
+
+@media (prefers-color-scheme: dark) {
+  .card.danger { border-color: #5c2f2a; background: #2a1917; }
+  .card.danger h2, .warn { color: #ffb4ab; }
+}

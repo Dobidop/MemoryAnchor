@@ -326,12 +326,18 @@ fn serves_collection_media_and_refuses_traversal() {
     let auth = format!("Bearer {}", inst.token);
 
     let set = http
-        .post(format!("{base}/_anchor/media-root"))
+        .post(format!("{base}/_anchor/paths"))
         .header("Authorization", &auth)
-        .body(serde_json::json!({ "path": media.to_string_lossy() }).to_string())
+        .body(
+            serde_json::json!({
+                "mediaRoot": media.to_string_lossy(),
+                "dataDir": dir.path().to_string_lossy(),
+            })
+            .to_string(),
+        )
         .send()
-        .expect("set media root");
-    assert!(set.status().is_success(), "media-root: {}", set.status());
+        .expect("set paths");
+    assert!(set.status().is_success(), "paths: {}", set.status());
 
     let hit = http
         .get(format!("{base}/_anchor/media/{}/diagram.png", inst.token))
@@ -356,5 +362,79 @@ fn serves_collection_media_and_refuses_traversal() {
         .get(format!("{base}/_anchor/media/not-the-token/diagram.png"))
         .send()
         .expect("wrong token");
+    assert_eq!(unauthenticated.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
+
+/// The sync key has to survive a restart, and it cannot live in the webview:
+/// the loopback port is ephemeral, so the page's origin — and with it any
+/// browser storage — changes on every launch.
+#[test]
+fn prefs_persist_and_require_configured_paths() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let inst = Instance::start(&["en".to_string()], 0, false, None).expect("start backend");
+    let http = reqwest::blocking::Client::new();
+    let base = format!("http://127.0.0.1:{}", inst.port);
+    let auth = format!("Bearer {}", inst.token);
+
+    // Before paths are known there is nowhere to put them.
+    let early = http
+        .put(format!("{base}/_anchor/prefs"))
+        .header("Authorization", &auth)
+        .body(r#"{"a":1}"#)
+        .send()
+        .expect("early put");
+    assert_eq!(early.status(), reqwest::StatusCode::CONFLICT);
+
+    let set = http
+        .post(format!("{base}/_anchor/paths"))
+        .header("Authorization", &auth)
+        .body(
+            serde_json::json!({
+                "mediaRoot": dir.path().join("media").to_string_lossy(),
+                "dataDir": dir.path().to_string_lossy(),
+            })
+            .to_string(),
+        )
+        .send()
+        .expect("set paths");
+    assert!(set.status().is_success());
+
+    // Nothing stored yet reads as an empty object, not an error.
+    let empty: serde_json::Value = http
+        .get(format!("{base}/_anchor/prefs"))
+        .header("Authorization", &auth)
+        .send()
+        .expect("get prefs")
+        .json()
+        .expect("json");
+    assert_eq!(empty, serde_json::json!({}));
+
+    let stored = serde_json::json!({ "syncAuth": { "hkey": "secret", "endpoint": null } });
+    let put = http
+        .put(format!("{base}/_anchor/prefs"))
+        .header("Authorization", &auth)
+        .body(stored.to_string())
+        .send()
+        .expect("put prefs");
+    assert!(put.status().is_success(), "put: {}", put.status());
+
+    let read: serde_json::Value = http
+        .get(format!("{base}/_anchor/prefs"))
+        .header("Authorization", &auth)
+        .send()
+        .expect("get prefs")
+        .json()
+        .expect("json");
+    assert_eq!(read, stored, "prefs did not round-trip");
+
+    assert!(
+        dir.path().join("prefs.json").exists(),
+        "prefs were not written beside the collection"
+    );
+
+    let unauthenticated = http
+        .get(format!("{base}/_anchor/prefs"))
+        .send()
+        .expect("no token");
     assert_eq!(unauthenticated.status(), reqwest::StatusCode::UNAUTHORIZED);
 }

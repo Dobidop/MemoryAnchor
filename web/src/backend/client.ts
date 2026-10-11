@@ -8,6 +8,7 @@
 // loopback port is reachable by any other app on the device.
 
 import { fromBinary, toBinary, type DescMessage, type MessageShape } from "@bufbuild/protobuf";
+import { BackendErrorSchema, BackendError_Kind } from "../gen/anki/backend_pb.js";
 
 declare global {
   interface Window {
@@ -24,10 +25,43 @@ export class BackendError extends Error {
   constructor(
     readonly status: number,
     readonly body: string,
+    /** Anki's error category, when the failure came from rslib. */
+    readonly kind?: BackendError_Kind,
   ) {
-    super(`backend returned ${status}: ${body}`);
+    super(body || `backend returned ${status}`);
     this.name = "BackendError";
   }
+
+  /** True when retrying later might succeed. */
+  get isTransient(): boolean {
+    return (
+      this.kind === BackendError_Kind.NETWORK_ERROR ||
+      this.kind === BackendError_Kind.SYNC_OTHER_ERROR
+    );
+  }
+}
+
+/**
+ * rslib reports failures as a protobuf BackendError carrying a localised,
+ * user-facing message. Read it rather than showing the raw bytes.
+ */
+async function errorFrom(response: Response): Promise<BackendError> {
+  const buffer = await response.arrayBuffer().catch(() => null);
+  if (buffer) {
+    try {
+      const decoded = fromBinary(BackendErrorSchema, new Uint8Array(buffer));
+      if (decoded.message) {
+        return new BackendError(response.status, decoded.message, decoded.kind);
+      }
+    } catch {
+      // Not a BackendError - fall through to treating the body as text.
+    }
+    const text = new TextDecoder().decode(buffer).trim();
+    if (text) {
+      return new BackendError(response.status, text);
+    }
+  }
+  return new BackendError(response.status, `backend returned ${response.status}`);
 }
 
 /// Thrown when the shell did not inject credentials — i.e. the page is open
@@ -82,7 +116,7 @@ export async function call<Req extends DescMessage, Resp extends DescMessage>(
   });
 
   if (!response.ok) {
-    throw new BackendError(response.status, await response.text().catch(() => ""));
+    throw await errorFrom(response);
   }
   return fromBinary(responseSchema, new Uint8Array(await response.arrayBuffer()));
 }
@@ -101,7 +135,7 @@ export async function health(signal?: AbortSignal): Promise<Health> {
     signal,
   });
   if (!response.ok) {
-    throw new BackendError(response.status, await response.text().catch(() => ""));
+    throw await errorFrom(response);
   }
   return (await response.json()) as Health;
 }

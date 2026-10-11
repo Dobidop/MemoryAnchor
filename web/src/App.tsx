@@ -5,10 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { health, NotConfiguredError } from "./backend/client.js";
 import { openDefaultCollection } from "./backend/collection.js";
 import { deckTree, setCurrentDeck, type DeckRow } from "./backend/decks.js";
+import { loadPrefs, type StoredSyncAuth } from "./backend/prefs.js";
 import { DeckList } from "./screens/DeckList.js";
+import { Sync } from "./screens/Sync.js";
 import { Reviewer } from "./screens/Reviewer.js";
 
-type Screen = { name: "decks" } | { name: "review"; deck: DeckRow };
+type Screen = { name: "decks" } | { name: "review"; deck: DeckRow } | { name: "sync" };
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -16,6 +18,8 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "decks" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncAuth, setSyncAuth] = useState<StoredSyncAuth | null>(null);
+  const [syncUser, setSyncUser] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setDecks(await deckTree());
@@ -28,6 +32,11 @@ export function App() {
         await health();
         await openDefaultCollection();
         if (cancelled) return;
+        const prefs = await loadPrefs();
+        if (!cancelled) {
+          setSyncAuth(prefs.syncAuth ?? null);
+          setSyncUser(prefs.syncUsername ?? null);
+        }
         await reload();
         if (!cancelled) setReady(true);
       } catch (err) {
@@ -80,6 +89,21 @@ export function App() {
     );
   }
 
+  if (screen.name === "sync") {
+    return (
+      <Sync
+        auth={syncAuth}
+        username={syncUser}
+        onAuthChanged={(auth, user) => {
+          setSyncAuth(auth);
+          setSyncUser(user);
+        }}
+        onSynced={reload}
+        onClose={() => setScreen({ name: "decks" })}
+      />
+    );
+  }
+
   if (screen.name === "review") {
     return <Reviewer deckName={leafName(screen.deck.name)} onFinished={leaveReview} />;
   }
@@ -91,7 +115,14 @@ export function App() {
           <p className="error">{error}</p>
         </div>
       )}
-      <DeckList decks={decks} busy={busy} onStudy={study} onReload={reload} />
+      <DeckList
+        decks={decks}
+        busy={busy}
+        syncedAs={syncUser}
+        onStudy={study}
+        onReload={reload}
+        onOpenSync={() => setScreen({ name: "sync" })}
+      />
     </>
   );
 }
