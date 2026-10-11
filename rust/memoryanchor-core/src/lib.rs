@@ -71,6 +71,7 @@ impl Instance {
         let state = Arc::new(server::AppState {
             backend,
             token: token.clone(),
+            media_root: std::sync::Mutex::new(None),
         });
 
         let (bound_port, listener) = runtime

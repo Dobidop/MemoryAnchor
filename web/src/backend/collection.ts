@@ -9,7 +9,7 @@ import {
   OpenCollectionRequestSchema,
 } from "../gen/anki/collection_pb.js";
 import { DeckNamesSchema, GetDeckNamesRequestSchema } from "../gen/anki/decks_pb.js";
-import { call } from "./client.js";
+import { call, config, dataDir } from "./client.js";
 
 export interface CollectionPaths {
   collectionPath: string;
@@ -55,4 +55,36 @@ export async function getDeckNames(options?: {
     DeckNamesSchema,
   );
   return response.entries.map((entry) => ({ id: entry.id, name: entry.name }));
+}
+
+/// Tells the backend where this collection's media lives, so the reviewer can
+/// resolve the bare filenames that card templates reference.
+export async function setMediaRoot(path: string): Promise<void> {
+  const { token, baseUrl } = config();
+  const response = await fetch(`${baseUrl}/_anchor/media-root`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!response.ok) {
+    throw new Error(`could not set media root: ${response.status}`);
+  }
+}
+
+/// Paths for the single collection this app manages, under the directory the
+/// native shell reserved for us.
+export function defaultPaths(): CollectionPaths {
+  const dir = dataDir();
+  return {
+    collectionPath: `${dir}/collection.anki2`,
+    mediaFolderPath: `${dir}/collection.media`,
+    mediaDbPath: `${dir}/collection.media.db2`,
+  };
+}
+
+/// Opens the app's collection and wires up media. Safe to call once at start.
+export async function openDefaultCollection(): Promise<void> {
+  const paths = defaultPaths();
+  await openCollection(paths);
+  await setMediaRoot(paths.mediaFolderPath);
 }

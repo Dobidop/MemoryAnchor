@@ -97,3 +97,122 @@ ul.decks li:last-child { border-bottom: 0; }
 dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1rem; font-size: 0.875rem; }
 dt { color: var(--muted); }
 dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* ---- deck list ---- */
+
+.head { margin-bottom: 1.25rem; }
+
+.notice {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  margin: 0 0 1rem;
+}
+
+ul.decks li { display: block; padding: 0; border: 0; }
+
+button.deck {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 0.625rem;
+  padding: 0.85rem 0.9rem;
+  margin-bottom: 0.4rem;
+  text-align: left;
+  font-weight: 400;
+}
+
+button.deck:disabled { opacity: 1; color: var(--muted); }
+
+.deck-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.deck-counts, .counts { display: flex; gap: 0.4rem; flex: none; }
+
+.deck-counts em, .counts em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+}
+
+.new { color: #1d4ed8; background: #dbeafe; }
+.learning { color: #b45309; background: #fef3c7; }
+.review { color: #15803d; background: #dcfce7; }
+.done { color: var(--muted); background: transparent; font-weight: 400; }
+
+@media (prefers-color-scheme: dark) {
+  .new { color: #93c5fd; background: #1e3a5f; }
+  .learning { color: #fcd34d; background: #442f0d; }
+  .review { color: #86efac; background: #14361f; }
+}
+
+.actions { margin-top: 1.25rem; }
+
+/* ---- reviewer ---- */
+
+.reviewer {
+  display: flex;
+  flex-direction: column;
+  /* Fill the viewport without fighting the on-screen keyboard or notch. */
+  height: 100dvh;
+}
+
+.reviewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  flex: none;
+}
+
+.deck-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.link {
+  background: none;
+  color: var(--accent);
+  padding: 0.25rem 0;
+  min-height: auto;
+  font-weight: 500;
+}
+
+.card-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: var(--surface);
+}
+
+.reviewer-actions {
+  flex: none;
+  padding: 0.75rem 0.9rem calc(0.75rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+button.reveal { width: 100%; }
+
+.grades { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
+
+.grade { padding: 0.7rem 0.3rem; font-size: 0.9375rem; }
+.grade-again { background: #b3261e; }
+.grade-hard { background: #9a6700; }
+.grade-good { background: var(--accent); }
+.grade-easy { background: #15803d; }

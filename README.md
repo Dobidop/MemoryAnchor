@@ -117,6 +117,15 @@ cd ../rust && cargo run --bin dev
 That prints a loopback URL serving the real Anki backend. UI work needs no
 Apple hardware; only the `.ipa` does.
 
+For something to review, build a small package of real notes:
+
+```bash
+cargo run --features devtools --bin make-fixture -- fixture.apkg
+```
+
+`devtools` is never enabled for the iOS build, so its extra dependencies stay
+out of the shipped static library.
+
 ### iOS
 
 An `.ipa` can only be produced on macOS. `.github/workflows/ios-spike.yml`
@@ -146,7 +155,10 @@ upstream Anki were needed. The cold build takes about 4 minutes on a
 | Swift calls the backend on a real simulator | ✅ 5/5 XCTest on iPhone 16 Pro |
 | Web UI drives the backend end to end | ✅ verified in a browser |
 | Unsigned `.ipa` builds for sideloading | ✅ 6.7 MB |
-| `.apkg` import · review UI · AnkiWeb sync | not started |
+| `.apkg` import | ✅ upload + rslib import |
+| Deck list with due counts | ✅ Anki's deck tree |
+| Reviewer with FSRS grading | ✅ Anki's templates and scheduler |
+| AnkiWeb sync | not started |
 
 Phase 1a: `MemoryAnchorKit` opens a real collection on an iOS simulator and reads
 its decks back over the loopback server. App Transport Security does not
@@ -155,6 +167,15 @@ interfere with loopback HTTP, and unauthenticated callers are rejected.
 Phase 1b: the React UI encodes protobuf, opens a real collection through rslib
 and lists its decks. A `WKWebView` shell packages it into a sideloadable
 `.ipa`.
+
+Phase 1c: importing a `.apkg`, browsing decks with Anki's own due counts, and
+reviewing cards rendered by Anki's template engine and scheduled by its FSRS
+implementation. Verified by importing a real package and grading a card: the
+queue moved a card from new to learning, which is what Anki does.
+
+Cards render inside a sandboxed iframe. Card CSS is arbitrary author CSS and
+must not leak into the app's styling, and card HTML must not be able to script
+the shell.
 
 ### Install size
 

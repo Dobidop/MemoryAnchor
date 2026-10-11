@@ -39,7 +39,7 @@ export class NotConfiguredError extends Error {
   }
 }
 
-function config(): { token: string; baseUrl: string } {
+export function config(): { token: string; baseUrl: string } {
   const injected = window.__MEMORYANCHOR__;
   if (!injected?.token) {
     throw new NotConfiguredError();

@@ -1,54 +1,51 @@
-// Phase 1b smoke UI: proves the webview can drive the real Anki backend.
-// The deck list and review UI proper arrive in 1c; this screen exists to show
-// the whole stack working end to end on a device.
+// Screen coordination: open the collection once, then move between the deck
+// list and the reviewer.
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  dataDir,
-  health,
-  isConfigured,
-  NotConfiguredError,
-  type Health,
-} from "./backend/client.js";
-import { getDeckNames, openCollection, type Deck } from "./backend/collection.js";
+import { health, NotConfiguredError } from "./backend/client.js";
+import { openDefaultCollection } from "./backend/collection.js";
+import { deckTree, setCurrentDeck, type DeckRow } from "./backend/decks.js";
+import { DeckList } from "./screens/DeckList.js";
+import { Reviewer } from "./screens/Reviewer.js";
 
-type Status = "starting" | "ready" | "error";
+type Screen = { name: "decks" } | { name: "review"; deck: DeckRow };
 
 export function App() {
-  const [status, setStatus] = useState<Status>("starting");
-  const [info, setInfo] = useState<Health | null>(null);
-  const [decks, setDecks] = useState<Deck[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [decks, setDecks] = useState<DeckRow[]>([]);
+  const [screen, setScreen] = useState<Screen>({ name: "decks" });
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    (async () => {
-      try {
-        setInfo(await health(controller.signal));
-        setStatus("ready");
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        setError(describe(err));
-        setStatus("error");
-      }
-    })();
-    return () => controller.abort();
+  const reload = useCallback(async () => {
+    setDecks(await deckTree());
   }, []);
 
-  const loadDecks = useCallback(async () => {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await health();
+        await openDefaultCollection();
+        if (cancelled) return;
+        await reload();
+        if (!cancelled) setReady(true);
+      } catch (err) {
+        if (!cancelled) setError(describe(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reload]);
+
+  const study = useCallback(async (deck: DeckRow) => {
     setBusy(true);
     setError(null);
     try {
-      // rslib resolves relative paths against the working directory, which is
-      // not meaningful on iOS, so build absolute paths under the shell's dir.
-      const dir = dataDir();
-      await openCollection({
-        collectionPath: `${dir}/collection.anki2`,
-        mediaFolderPath: `${dir}/collection.media`,
-        mediaDbPath: `${dir}/collection.media.db2`,
-      });
-      setDecks(await getDeckNames());
+      // The reviewer draws from the current deck, so select it first.
+      await setCurrentDeck(deck.id);
+      setScreen({ name: "review", deck });
     } catch (err) {
       setError(describe(err));
     } finally {
@@ -56,49 +53,52 @@ export function App() {
     }
   }, []);
 
-  return (
-    <div className="wrap">
-      <h1>MemoryAnchor</h1>
-      <p className="sub">Anki's own backend, running on iOS.</p>
+  const leaveReview = useCallback(async () => {
+    setScreen({ name: "decks" });
+    try {
+      await reload();
+    } catch (err) {
+      setError(describe(err));
+    }
+  }, [reload]);
 
-      {status === "error" && error && (
-        <div className="card">
+  if (error && !ready) {
+    return (
+      <div className="wrap">
+        <h1>MemoryAnchor</h1>
+        <p className="error">{error}</p>
+      </div>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <div className="wrap">
+        <h1>MemoryAnchor</h1>
+        <p className="sub">Opening collection…</p>
+      </div>
+    );
+  }
+
+  if (screen.name === "review") {
+    return <Reviewer deckName={leafName(screen.deck.name)} onFinished={leaveReview} />;
+  }
+
+  return (
+    <>
+      {error && (
+        <div className="wrap">
           <p className="error">{error}</p>
         </div>
       )}
-
-      {info && (
-        <div className="card">
-          <h2>Backend</h2>
-          <dl>
-            <dt>Status</dt>
-            <dd>{info.ok ? "running" : "unavailable"}</dd>
-            <dt>Anki</dt>
-            <dd>{info.anki || "unknown"}</dd>
-            <dt>MemoryAnchor</dt>
-            <dd>{info.memoryanchor}</dd>
-          </dl>
-        </div>
-      )}
-
-      <div className="card">
-        <h2>Collection</h2>
-        <button onClick={loadDecks} disabled={busy || status !== "ready"}>
-          {busy ? "Opening…" : decks ? "Reload decks" : "Open collection"}
-        </button>
-        {decks && (
-          <ul className="decks" style={{ marginTop: "1rem" }}>
-            {decks.map((deck) => (
-              <li key={String(deck.id)}>
-                <span>{deck.name}</span>
-                <span className="id">{String(deck.id)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+      <DeckList decks={decks} busy={busy} onStudy={study} onReload={reload} />
+    </>
   );
+}
+
+function leafName(name: string): string {
+  const parts = name.split("\u001f");
+  return parts[parts.length - 1] ?? name;
 }
 
 function describe(err: unknown): string {
@@ -106,9 +106,4 @@ function describe(err: unknown): string {
     return "Open this through the MemoryAnchor app — the backend token is injected by the native shell.";
   }
   return err instanceof Error ? err.message : String(err);
-}
-
-// Surface a clear message when the page is opened outside the shell.
-if (typeof window !== "undefined" && !isConfigured()) {
-  console.warn("MemoryAnchor: no backend credentials injected");
 }

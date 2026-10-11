@@ -17,7 +17,20 @@ final class ReviewerViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        start()
 
+        // iOS tears down open sockets when it suspends an app, so the loopback
+        // server may be gone by the time we are shown again. Check on every
+        // activation and rebuild if it is.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(didBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
+    private func start() {
         do {
             let backend = try MemoryAnchorBackend(
                 preferredLanguages: Self.preferredLanguages(),
@@ -28,6 +41,34 @@ final class ReviewerViewController: UIViewController {
         } catch {
             showFailure("\(error)")
         }
+    }
+
+    @objc private func didBecomeActive() {
+        guard let backend else {
+            start()
+            return
+        }
+        Task { @MainActor [weak self] in
+            do {
+                _ = try await backend.health()
+            } catch {
+                // The port is dead. A new backend means a new port and token,
+                // so the page has to be rebuilt around them.
+                self?.restart()
+            }
+        }
+    }
+
+    @MainActor
+    private func restart() {
+        webView?.removeFromSuperview()
+        webView = nil
+        backend = nil
+        start()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     /// The web build is copied into the bundle as a folder reference.

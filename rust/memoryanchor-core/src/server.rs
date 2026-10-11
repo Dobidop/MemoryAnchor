@@ -10,10 +10,14 @@
 
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use axum::body::Bytes;
+use axum::extract::DefaultBodyLimit;
 use axum::extract::Path;
 use axum::extract::State;
 use axum::http::header;
@@ -29,12 +33,20 @@ use tower_http::services::ServeFile;
 
 use crate::routes;
 
+/// Largest package we will accept. Generous, but not unbounded: the body is
+/// buffered, and an unbounded one would be an easy way to exhaust memory.
+const MAX_UPLOAD_BYTES: usize = 1024 * 1024 * 1024;
+
 /// Anki sends and receives protobuf under this content type.
 const PROTO_CONTENT_TYPE: &str = "application/binary";
 
 pub struct AppState {
     pub backend: anki::backend::Backend,
     pub token: String,
+    /// Media folder of the open collection. Set once a collection is opened,
+    /// because the folder is chosen by the caller of `openCollection` and can
+    /// change when a different collection is opened.
+    pub media_root: Mutex<Option<PathBuf>>,
 }
 
 /// Builds the router. When `web_root` is set, the built web UI is served from
@@ -49,6 +61,14 @@ pub fn router(state: Arc<AppState>, web_root: Option<PathBuf>) -> Router {
         .route("/_anki/healthz", get(healthz))
         .route("/_anki/{method}", post(call_unqualified))
         .route("/_anki/{service}/{method}", post(call_qualified))
+        // Our own namespace, deliberately outside /_anki/: this is not part of
+        // Anki's contract.
+        .route("/_anchor/upload", post(upload))
+        .route("/_anchor/media-root", post(set_media_root))
+        .route("/_anchor/media/{token}/{name}", get(media))
+        // Collection packages are routinely hundreds of megabytes; axum
+        // defaults to a 2 MB body.
+        .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
         .with_state(state);
 
     match web_root {
@@ -68,11 +88,12 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Resp
     if let Err(resp) = authorize(&headers, &state) {
         return resp;
     }
-    let body = format!(
-        r#"{{"ok":true,"anki":"{}","memoryanchor":"{}"}}"#,
-        anki::version::buildhash(),
-        env!("CARGO_PKG_VERSION"),
-    );
+    let body = serde_json::json!({
+        "ok": true,
+        "anki": anki::version::buildhash(),
+        "memoryanchor": env!("CARGO_PKG_VERSION"),
+    })
+    .to_string();
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "application/json")],
@@ -175,4 +196,122 @@ pub async fn bind(
     let port = listener.local_addr()?.port();
     let _ = &state;
     Ok((port, listener))
+}
+
+/// Receives a file and returns the path it was written to, so the caller can
+/// hand that path to an rslib method that takes one — `importAnkiPackage`
+/// wants a path on disk, not bytes.
+///
+/// Files land in the process temp directory. On iOS that is the app's own
+/// `tmp`, which the system may purge, which is the right lifetime for an
+/// import that is consumed immediately.
+async fn upload(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Err(resp) = authorize(&headers, &state) {
+        return resp;
+    }
+    if body.is_empty() {
+        return (StatusCode::BAD_REQUEST, "empty upload").into_response();
+    }
+
+    // The client's filename is untrusted; keep only the extension, which is
+    // all rslib needs in order to recognise the format.
+    let suffix = headers
+        .get("x-anchor-filename")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|name| name.rsplit_once('.'))
+        .map(|(_, ext)| ext)
+        .filter(|ext| ext.len() <= 16 && ext.chars().all(|c| c.is_ascii_alphanumeric()))
+        .unwrap_or("apkg")
+        .to_string();
+
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let path = std::env::temp_dir().join(format!("anchor-upload-{nanos}.{suffix}"));
+
+    match tokio::fs::write(&path, &body).await {
+        Ok(()) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json")],
+            serde_json::json!({ "path": path.to_string_lossy() }).to_string(),
+        )
+            .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("could not store upload: {err}"),
+        )
+            .into_response(),
+    }
+}
+
+/// Points the media route at the open collection's media folder.
+async fn set_media_root(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Err(resp) = authorize(&headers, &state) {
+        return resp;
+    }
+    let parsed: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(err) => return (StatusCode::BAD_REQUEST, format!("bad json: {err}")).into_response(),
+    };
+    let Some(path) = parsed.get("path").and_then(|p| p.as_str()) else {
+        return (StatusCode::BAD_REQUEST, "missing 'path'").into_response();
+    };
+    *state.media_root.lock().unwrap() = Some(PathBuf::from(path));
+    StatusCode::NO_CONTENT.into_response()
+}
+
+/// Serves one file from the collection's media folder, authenticated by a
+/// token path segment rather than a header.
+///
+/// Anki media names are flat, so anything with a directory component or a
+/// parent reference is a traversal attempt and is refused outright rather
+/// than normalised.
+async fn media(
+    State(state): State<Arc<AppState>>,
+    Path((token, name)): Path<(String, String)>,
+) -> Response {
+    // An <img> cannot send an Authorization header, so the token arrives as a
+    // path segment instead. Same check, different carrier.
+    if !constant_time_eq(token.as_bytes(), state.token.as_bytes()) {
+        return (StatusCode::UNAUTHORIZED, "invalid or missing token").into_response();
+    }
+
+    let root = { state.media_root.lock().unwrap().clone() };
+    let Some(root) = root else {
+        return (StatusCode::NOT_FOUND, "no collection open").into_response();
+    };
+
+    let candidate = std::path::Path::new(&name);
+    let mut components = candidate.components();
+    let single_plain_name = matches!(
+        (components.next(), components.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    );
+    if !single_plain_name {
+        return (StatusCode::BAD_REQUEST, "invalid media name").into_response();
+    }
+
+    match tokio::fs::read(root.join(candidate)).await {
+        Ok(bytes) => (
+            StatusCode::OK,
+            [(
+                header::CONTENT_TYPE,
+                mime_guess::from_path(candidate)
+                    .first_or_octet_stream()
+                    .to_string(),
+            )],
+            bytes,
+        )
+            .into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "no such media file").into_response(),
+    }
 }

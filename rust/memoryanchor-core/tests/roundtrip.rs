@@ -187,3 +187,174 @@ fn serves_the_web_ui_from_the_same_origin() {
         "static serving must not bypass API auth"
     );
 }
+
+/// rslib's importAnkiPackage takes a path on disk, not bytes, so the webview
+/// needs somewhere to put a file the user picked. This covers that hand-off:
+/// upload returns a path, and rslib can then import from it.
+#[test]
+fn uploads_a_package_and_imports_it() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let inst = Instance::start(&["en".to_string()], 0, false, None).expect("start backend");
+    let http = reqwest::blocking::Client::new();
+    let base = format!("http://127.0.0.1:{}", inst.port);
+
+    let open = |path: &std::path::Path| {
+        let req = anki_proto::collection::OpenCollectionRequest {
+            collection_path: path.to_str().unwrap().to_string(),
+            media_folder_path: dir.path().join("media").to_str().unwrap().to_string(),
+            media_db_path: dir.path().join("media.db").to_str().unwrap().to_string(),
+        };
+        let resp = http
+            .post(format!("{base}/_anki/openCollection"))
+            .header("Authorization", format!("Bearer {}", inst.token))
+            .body(req.encode_to_vec())
+            .send()
+            .expect("openCollection");
+        assert!(resp.status().is_success(), "openCollection: {}", resp.status());
+    };
+
+    // Build a genuine .apkg by exporting one from rslib, rather than crafting
+    // a fixture by hand — this way the test exercises the real format.
+    let source = dir.path().join("source.anki2");
+    open(&source);
+    let apkg = dir.path().join("deck.apkg");
+    let export = anki_proto::import_export::ExportAnkiPackageRequest {
+        out_path: apkg.to_str().unwrap().to_string(),
+        limit: None,
+        options: Some(anki_proto::import_export::ExportAnkiPackageOptions {
+            with_scheduling: false,
+            with_deck_configs: false,
+            with_media: false,
+            legacy: false,
+        }),
+    };
+    let resp = http
+        .post(format!("{base}/_anki/exportAnkiPackage"))
+        .header("Authorization", format!("Bearer {}", inst.token))
+        .body(export.encode_to_vec())
+        .send()
+        .expect("exportAnkiPackage");
+    assert!(resp.status().is_success(), "export: {}", resp.status());
+    assert!(apkg.exists(), "no .apkg was written");
+
+    // A backend holds one collection at a time, so release the source before
+    // opening the destination.
+    let close = http
+        .post(format!("{base}/_anki/closeCollection"))
+        .header("Authorization", format!("Bearer {}", inst.token))
+        .body(
+            anki_proto::collection::CloseCollectionRequest {
+                downgrade_to_schema11: false,
+            }
+            .encode_to_vec(),
+        )
+        .send()
+        .expect("closeCollection");
+    assert!(close.status().is_success(), "close: {}", close.status());
+
+    // Upload it the way the webview will, then import from the returned path.
+    let bytes = std::fs::read(&apkg).expect("read apkg");
+    let uploaded = http
+        .post(format!("{base}/_anchor/upload"))
+        .header("Authorization", format!("Bearer {}", inst.token))
+        .header("x-anchor-filename", "deck.apkg")
+        .body(bytes)
+        .send()
+        .expect("upload");
+    assert!(uploaded.status().is_success(), "upload: {}", uploaded.status());
+
+    let json: serde_json::Value = uploaded.json().expect("upload json");
+    let stored = json["path"].as_str().expect("path in response").to_string();
+    assert!(
+        std::path::Path::new(&stored).exists(),
+        "upload reported a path that does not exist: {stored}"
+    );
+    assert!(stored.ends_with(".apkg"), "extension not preserved: {stored}");
+
+    let target = dir.path().join("target.anki2");
+    open(&target);
+    let import = anki_proto::import_export::ImportAnkiPackageRequest {
+        package_path: stored,
+        options: Some(anki_proto::import_export::ImportAnkiPackageOptions {
+            merge_notetypes: false,
+            update_notes: 0,
+            update_notetypes: 0,
+            with_scheduling: false,
+            with_deck_configs: false,
+        }),
+    };
+    let resp = http
+        .post(format!("{base}/_anki/importAnkiPackage"))
+        .header("Authorization", format!("Bearer {}", inst.token))
+        .body(import.encode_to_vec())
+        .send()
+        .expect("importAnkiPackage");
+    assert!(
+        resp.status().is_success(),
+        "import failed: {} {}",
+        resp.status(),
+        resp.text().unwrap_or_default()
+    );
+}
+
+#[test]
+fn upload_requires_the_token() {
+    let inst = Instance::start(&["en".to_string()], 0, false, None).expect("start backend");
+    let resp = reqwest::blocking::Client::new()
+        .post(format!("http://127.0.0.1:{}/_anchor/upload", inst.port))
+        .body(vec![1, 2, 3])
+        .send()
+        .expect("send");
+    assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
+
+/// Cards reference media by bare filename, so the reviewer needs those served.
+/// Anki media names are flat; anything with a path component is refused rather
+/// than normalised.
+#[test]
+fn serves_collection_media_and_refuses_traversal() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let media = dir.path().join("collection.media");
+    std::fs::create_dir_all(&media).expect("create media dir");
+    std::fs::write(media.join("diagram.png"), b"not-really-a-png").expect("write media");
+    // A file the media route must never reach.
+    std::fs::write(dir.path().join("secret.txt"), b"private").expect("write secret");
+
+    let inst = Instance::start(&["en".to_string()], 0, false, None).expect("start backend");
+    let http = reqwest::blocking::Client::new();
+    let base = format!("http://127.0.0.1:{}", inst.port);
+    let auth = format!("Bearer {}", inst.token);
+
+    let set = http
+        .post(format!("{base}/_anchor/media-root"))
+        .header("Authorization", &auth)
+        .body(serde_json::json!({ "path": media.to_string_lossy() }).to_string())
+        .send()
+        .expect("set media root");
+    assert!(set.status().is_success(), "media-root: {}", set.status());
+
+    let hit = http
+        .get(format!("{base}/_anchor/media/{}/diagram.png", inst.token))
+        .send()
+        .expect("get media");
+    assert!(hit.status().is_success(), "media: {}", hit.status());
+    assert_eq!(hit.bytes().expect("body").as_ref(), b"not-really-a-png");
+
+    for escape in ["../secret.txt", "..%2Fsecret.txt", "sub/dir.png"] {
+        let resp = http
+            .get(format!("{base}/_anchor/media/{}/{escape}", inst.token))
+            .send()
+            .expect("traversal attempt");
+        assert!(
+            !resp.status().is_success(),
+            "media route served {escape} with {}",
+            resp.status()
+        );
+    }
+
+    let unauthenticated = http
+        .get(format!("{base}/_anchor/media/not-the-token/diagram.png"))
+        .send()
+        .expect("wrong token");
+    assert_eq!(unauthenticated.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
